@@ -170,9 +170,9 @@ class AuthState(rx.State):
         except Exception as e:
             print(f"[DEBUG] get_session error: {e}")
         
-        # No valid session found - restoration will happen via on_mount
-        self.user = None
-        self.access_token = None
+        # No valid server-side session found — don't clear state.
+        # Restoration from browser localStorage is handled by on_mount
+        # via try_restore_from_storage. Clearing here would race with it.
     
     async def restore_session(self, user_id: str, user_email: str, access_token: str, refresh_token: str):
         """
