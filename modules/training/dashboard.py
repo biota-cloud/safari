@@ -633,13 +633,12 @@ def configuration_card() -> rx.Component:
                                 id="epochs-commit-input",
                                 on_change=TrainingState.set_epochs_from_js,
                             ),
-                            # Native HTML range slider — zero WS during drag
+                            # Native HTML range slider — ZERO Reflex bindings
                             rx.el.input(
                                 type="range",
                                 min="10",
                                 max="500",
                                 step="10",
-                                default_value=TrainingState.epochs.to(str),
                                 id="epochs-range",
                                 style={
                                     "width": "100%",
@@ -648,17 +647,21 @@ def configuration_card() -> rx.Component:
                                     "accent_color": styles.ACCENT,
                                 },
                             ),
-                            # JS: input event = update display, change event = sync to Python
+                            # JS: set initial value + input/change event listeners
                             rx.script("""
                                 (function() {
                                     function init() {
                                         var sl = document.getElementById('epochs-range');
                                         if (!sl || sl.dataset.bound) return false;
                                         sl.dataset.bound = 'true';
+                                        // Set initial value from the display text (from Python state)
+                                        var d = document.getElementById('epochs-value-display');
+                                        if (d && d.textContent) sl.value = d.textContent.trim();
+                                        // Update display on every drag tick (pure JS, zero WS)
                                         sl.addEventListener('input', function() {
-                                            var d = document.getElementById('epochs-value-display');
                                             if (d) d.textContent = sl.value;
                                         });
+                                        // Sync to Python on release via hidden input bridge
                                         sl.addEventListener('change', function() {
                                             var h = document.getElementById('epochs-commit-input');
                                             if (h) {
