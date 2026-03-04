@@ -309,7 +309,7 @@ def hero_photo_panel() -> rx.Component:
         style={
             "width": "50%",
             "min_height": "100vh",
-            "background_image": "url('/branding/lobo.png')",
+            "background_image": "url('/branding/lobo.jpg')",
             "background_size": "cover",
             "background_position": "center",
             "background_color": styles.ACCENT_HOVER,  # Fallback forest green if image not found
