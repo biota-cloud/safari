@@ -2539,6 +2539,13 @@
             _isSeeking = false;
             drawVideoFrameToCanvas();
 
+            // Render annotations from JS cache (Phase 1 - zero WS traffic)
+            const cachedAnns = videoAnnotationCache[frame];
+            annotations = cachedAnns || [];
+            if (annotations.length > 0) {
+                drawCanvas();
+            }
+
             // If another seek was queued while we were seeking, execute it
             if (_pendingSeekFrame !== null && _pendingSeekFrame !== frame) {
                 const nextFrame = _pendingSeekFrame;

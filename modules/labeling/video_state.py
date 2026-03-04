@@ -1348,37 +1348,17 @@ class VideoLabelingState(rx.State):
             return self.seek_to_frame(frame)
     
     def handle_slider_drag(self, value: list):
-        """Handle slider dragging - update position and render annotations in real-time."""
+        """Handle slider dragging — lightweight, just update frame + seek in JS.
+        
+        PERF OPTIMIZATION: No annotation lookup or renderAnnotations callback.
+        JS cache handles annotation rendering inside _executeSeek().
+        """
         if value and len(value) > 0:
             frame = int(value[0])
             self.current_frame = frame
             self.current_timestamp = frame / self.fps if self.fps > 0 else 0
-            
-            # Check if this frame is a keyframe and load annotations from cache
-            keyframe_found = False
-            for i, kf in enumerate(self.keyframes):
-                if kf.frame_number == frame:
-                    # This frame is a keyframe - load annotations from cache
-                    self.selected_keyframe_idx = i
-                    if kf.id in self.annotation_cache:
-                        self.annotations = self.annotation_cache[kf.id].copy()
-                    else:
-                        self.annotations = []
-                    self.selected_annotation_id = None
-                    keyframe_found = True
-                    break
-            
-            if not keyframe_found:
-                # Not a keyframe - clear annotations
-                self.selected_keyframe_idx = -1
-                self.annotations = []
-                self.selected_annotation_id = None
-            
-            # Seek video and render annotations
-            return [
-                rx.call_script(f"window.seekToFrame && window.seekToFrame({frame}, {self.fps})"),
-                rx.call_script(f"window.renderAnnotations && window.renderAnnotations({json.dumps(self.annotations)})"),
-            ]
+            # Single JS call — annotations render from JS cache in _executeSeek
+            return rx.call_script(f"window.seekToFrame && window.seekToFrame({frame}, {self.fps})")
             
     def handle_video_loading(self, status: str):
         """Handle video loading status updates from JS.
