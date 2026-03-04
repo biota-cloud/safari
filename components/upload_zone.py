@@ -38,6 +38,7 @@ def upload_zone(
             if (!window._previewIntervals) window._previewIntervals = {{}};
             if (!window._previewRendered) window._previewRendered = {{}};
             if (!window._previewListenersAttached) window._previewListenersAttached = {{}};
+            if (!window._previewDataUrls) window._previewDataUrls = {{}};
             
             function renderPreviews() {{
                 const container = document.getElementById(previewContainerId);
@@ -47,10 +48,32 @@ def upload_zone(
                 if (!files || files.length === 0) return false;
                 
                 const fileKey = Array.from(files).map(f => f.name + f.size).join('|');
-                if (window._previewRendered[uploadId] === fileKey) return true;
+                
+                // If container was emptied by re-render but we have cached data URLs, re-render from cache
+                const hasChildren = container.children.length > 0;
+                if (window._previewRendered[uploadId] === fileKey && hasChildren) return true;
+                
+                // Check if we have cached data URLs for this file set
+                const cached = window._previewDataUrls[uploadId];
+                if (cached && cached.key === fileKey) {{
+                    console.log('[Preview] Re-rendering from cache for', uploadId);
+                    container.innerHTML = '';
+                    cached.urls.forEach(item => {{
+                        const wrapper = document.createElement('div');
+                        wrapper.style.cssText = 'width:80px;height:80px;border-radius:6px;overflow:hidden;border:1px solid #27272A;background:#18181B;display:flex;align-items:center;justify-content:center;margin-bottom:8px;';
+                        const img = document.createElement('img');
+                        img.src = item;
+                        img.style.cssText = 'width:100%;height:100%;object-fit:cover;';
+                        wrapper.appendChild(img);
+                        container.appendChild(wrapper);
+                    }});
+                    window._previewRendered[uploadId] = fileKey;
+                    return true;
+                }}
                 
                 console.log('[Preview] Rendering', files.length, 'image previews for', uploadId);
                 window._previewRendered[uploadId] = fileKey;
+                window._previewDataUrls[uploadId] = {{ key: fileKey, urls: [] }};
                 container.innerHTML = '';
                 
                 Array.from(files).slice(0, 12).forEach(file => {{
@@ -68,6 +91,10 @@ def upload_zone(
                         img.style.cssText = 'width:100%;height:100%;object-fit:cover;';
                         wrapper.innerHTML = '';
                         wrapper.appendChild(img);
+                        // Cache the data URL for re-renders
+                        if (window._previewDataUrls[uploadId] && window._previewDataUrls[uploadId].key === fileKey) {{
+                            window._previewDataUrls[uploadId].urls.push(e.target.result);
+                        }}
                     }};
                     reader.readAsDataURL(file);
                 }});
@@ -80,6 +107,8 @@ def upload_zone(
                     console.log('[Preview] Drop captured:', e.dataTransfer.files.length, 'files for', uploadId);
                     window._filePreviews[uploadId] = e.dataTransfer.files;
                     window._previewRendered[uploadId] = null;
+                    // Render immediately, don't wait for poll
+                    setTimeout(renderPreviews, 50);
                 }}
             }}
             
@@ -88,6 +117,7 @@ def upload_zone(
                     console.log('[Preview] Input change:', e.target.files.length, 'files for', uploadId);
                     window._filePreviews[uploadId] = e.target.files;
                     window._previewRendered[uploadId] = null;
+                    setTimeout(renderPreviews, 50);
                 }}
             }}
             
@@ -95,17 +125,20 @@ def upload_zone(
                 const uploadWrapper = document.getElementById(uploadId);
                 if (!uploadWrapper) return false;
                 
-                if (!window._previewListenersAttached[uploadId]) {{
-                    uploadWrapper.addEventListener('drop', handleDrop, true);
-                    
-                    const input = uploadWrapper.querySelector('input[type="file"]');
-                    if (input) {{
-                        input.addEventListener('change', handleInputChange);
-                    }}
-                    
-                    window._previewListenersAttached[uploadId] = true;
-                    console.log('[Preview] Listeners attached for', uploadId);
+                // Re-attach on every script run since Reflex may re-render the DOM
+                const handlerKey = '_previewDropHandler_' + uploadId;
+                if (window[handlerKey]) {{
+                    uploadWrapper.removeEventListener('drop', window[handlerKey], true);
                 }}
+                window[handlerKey] = handleDrop;
+                uploadWrapper.addEventListener('drop', handleDrop, true);
+                
+                const input = uploadWrapper.querySelector('input[type="file"]');
+                if (input && !input._previewListenerAttached) {{
+                    input.addEventListener('change', handleInputChange);
+                    input._previewListenerAttached = true;
+                }}
+                
                 return true;
             }}
             
@@ -118,7 +151,7 @@ def upload_zone(
                 clearInterval(window._previewIntervals[uploadId]);
             }}
             
-            window._previewIntervals[uploadId] = setInterval(poll, 300);
+            window._previewIntervals[uploadId] = setInterval(poll, 500);
             setTimeout(poll, 100);
             
             console.log('[Preview] Image preview system started for', uploadId);

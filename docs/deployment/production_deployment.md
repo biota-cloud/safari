@@ -35,7 +35,7 @@ add-apt-repository ppa:deadsnakes/ppa -y
 apt update
 
 # Install Python 3.11 and system dependencies
-apt install -y python3.11 python3.11-venv git curl ffmpeg
+apt install -y python3.11 python3.11-venv git curl ffmpeg unzip
 
 # Install Tailscale
 curl -fsSL https://tailscale.com/install.sh | sh
@@ -71,6 +71,17 @@ chmod 600 .env  # Restrict secrets to safari user only
 ```
 
 See [`.env.production.example`](../../.env.production.example) for all required variables with descriptions.
+
+### Supabase Database Setup
+
+For a fresh deployment, create all tables, RLS policies, and triggers by running the consolidated schema in the [Supabase SQL Editor](https://supabase.com/dashboard/project/_/sql):
+
+1. Go to your Supabase project → **SQL Editor**
+2. Copy the contents of [`migrations/schema.sql`](../../migrations/schema.sql)
+3. Paste and run — this creates all 13 tables, helper functions, RLS policies, and the auto-profile trigger
+
+> [!IMPORTANT]
+> Run the schema **before** your first login. The `handle_new_user` trigger auto-creates a user profile when someone signs up via Supabase Auth.
 
 ### Modal Authentication
 
