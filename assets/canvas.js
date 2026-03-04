@@ -2147,18 +2147,19 @@
     };
 
     // ── JS-SIDE SLIDER SEEK (Phase 2 perf optimization) ──
-    // Pointer events on the slider → seekToFrame directly in JS.
-    // Eliminates ALL WS response traffic during slider drag.
+    // Pointer events on the slider → _executeSeek directly in JS.
+    // Adaptive frame dropping: only one seek active at a time.
+    // Fast drag = more dropped frames. Slow drag = fewer drops.
+    // Final frame on pointerup is always guaranteed to display.
     let _sliderDragging = false;
+    let _sliderTargetFrame = null;
 
     function _initSliderDragSeek() {
         const container = document.getElementById('video-timeline-slider');
         if (!container || container.dataset.seekBound) return;
         container.dataset.seekBound = 'true';
 
-        // Find the actual Radix slider track (the span with role="slider" is the thumb)
         function getTrackBounds() {
-            // The slider track is inset by 6px on each side (for thumb alignment)
             const rect = container.getBoundingClientRect();
             return { left: rect.left + 6, right: rect.right - 6, width: rect.width - 12 };
         }
@@ -2170,30 +2171,61 @@
             return 0;
         }
 
-        function seekFromPointer(e) {
+        function computeFrame(e) {
             const bounds = getTrackBounds();
             const totalFrames = getTotalFrames();
-            if (totalFrames <= 0 || bounds.width <= 0) return;
+            if (totalFrames <= 0 || bounds.width <= 0) return -1;
             const ratio = Math.max(0, Math.min(1, (e.clientX - bounds.left) / bounds.width));
-            const frame = Math.round(ratio * (totalFrames - 1));
-            window.seekToFrame(frame, videoFps);
+            return Math.round(ratio * (totalFrames - 1));
+        }
+
+        function sliderSeek(e) {
+            const frame = computeFrame(e);
+            if (frame < 0) return;
+
+            // Store as the latest target — will overwrite any pending seek
+            _pendingSeekFrame = frame;
+
+            // Only start a new seek if the decoder is free
+            // If _isSeeking, the pending frame will be picked up automatically
+            // when the current seek completes (handled in _executeSeek)
+            if (!_isSeeking) {
+                _pendingSeekFrame = null;
+                _executeSeek(frame);
+            }
+            // Else: frame is stored in _pendingSeekFrame and will be
+            // picked up when current seek completes → drops intermediates
         }
 
         container.addEventListener('pointerdown', function (e) {
             _sliderDragging = true;
-            seekFromPointer(e);
+            // Clear any pending debounced seek from seekToFrame
+            if (_seekDebounceTimer) {
+                clearTimeout(_seekDebounceTimer);
+                _seekDebounceTimer = null;
+            }
+            sliderSeek(e);
         });
 
         document.addEventListener('pointermove', function (e) {
             if (!_sliderDragging) return;
-            seekFromPointer(e);
+            sliderSeek(e);
         });
 
         document.addEventListener('pointerup', function () {
+            if (!_sliderDragging) return;
             _sliderDragging = false;
+            // Guarantee final frame: if a seek is pending, it will complete
+            // via _executeSeek's built-in pending handler. If _isSeeking is
+            // false and _pendingSeekFrame is set, force one last seek.
+            if (_pendingSeekFrame !== null && !_isSeeking) {
+                const final = _pendingSeekFrame;
+                _pendingSeekFrame = null;
+                _executeSeek(final);
+            }
         });
 
-        console.log('[PerfOpt] Slider drag seek listener initialized');
+        console.log('[PerfOpt] Slider drag seek (adaptive frame drop) initialized');
     }
 
     // Re-try init periodically until the slider element exists
