@@ -56,3 +56,4 @@ test_image.jpg
 
 # Export archives (generated at runtime)
 assets/exports/
+.env.personal
