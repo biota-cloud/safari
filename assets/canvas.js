@@ -2223,6 +2223,9 @@
                 _pendingSeekFrame = null;
                 _executeSeek(final);
             }
+            // Force-sync current frame to Python so the slider handle updates
+            // (controlled slider needs current_frame updated in Python state)
+            syncFrameToPython();
         });
 
         console.log('[PerfOpt] Slider drag seek (adaptive frame drop) initialized');
