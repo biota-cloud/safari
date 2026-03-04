@@ -60,16 +60,17 @@ class AuthState(rx.State):
         """Check if the current user is an admin."""
         return self.user_role == "admin"
     
-    async def login(self, email: str, password: str, remember_me: bool = True):
+    async def login(self, form_data: dict):
         """
-        Authenticate user with email and password.
+        Authenticate user with email and password from form submission.
         
         Args:
-            email: User's email address
-            password: User's password
-            remember_me: If True, store tokens in localStorage (persistent).
-                        If False, store in sessionStorage (current session only).
+            form_data: Dict with 'email' and 'password' keys from rx.form.
         """
+        email = form_data.get("email", "")
+        password = form_data.get("password", "")
+        remember_me = True  # Always remember
+        
         self.is_loading = True
         self.error_message = ""
         yield  # Update UI to show loading state

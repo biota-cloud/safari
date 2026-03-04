@@ -265,11 +265,7 @@ def login_form_panel() -> rx.Component:
                     spacing="4",
                     width="100%",
                 ),
-                on_submit=lambda form_data: AuthState.login(
-                    form_data.get("email", ""),
-                    form_data.get("password", ""),
-                    True,  # Always remember me
-                ),
+                on_submit=AuthState.login,
                 reset_on_submit=False,
                 width="100%",
             ),
