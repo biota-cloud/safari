@@ -264,10 +264,13 @@ class DatasetsState(rx.State):
         yield
         
         try:
-            # 1. Cleanup R2 files for this dataset
-            r2 = R2Client()
-            deleted_count = r2.delete_files_with_prefix(f"datasets/{self.delete_dataset_id}/")
-            print(f"[DEBUG] Deleted {deleted_count} files from R2 for dataset {self.delete_dataset_id}")
+            # 1. Cleanup R2 files for this dataset (best-effort)
+            try:
+                r2 = R2Client()
+                deleted_count = r2.delete_files_with_prefix(f"datasets/{self.delete_dataset_id}/")
+                print(f"[DEBUG] Deleted {deleted_count} files from R2 for dataset {self.delete_dataset_id}")
+            except Exception as r2_err:
+                print(f"[DEBUG] R2 cleanup skipped (empty dataset or R2 error): {r2_err}")
             
             # 2. Delete from database (cascades to images via FK)
             success = db_delete_dataset(self.delete_dataset_id)

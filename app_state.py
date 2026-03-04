@@ -22,6 +22,9 @@ class AuthState(rx.State):
     is_loading: bool = False
     error_message: str = ""
     
+    # Session lifecycle: False until first auth check completes (prevents login page flash)
+    session_checked: bool = False
+    
     # Session restoration singleton gate (prevents parallel set_session race conditions)
     _session_restore_in_progress: bool = False
     
@@ -86,6 +89,7 @@ class AuthState(rx.State):
                 self.access_token = response.session.access_token
                 self.refresh_token = response.session.refresh_token
                 self.error_message = ""
+                self.session_checked = True
                 
                 # Store tokens based on remember_me preference
                 storage_type = "localStorage" if remember_me else "sessionStorage"
@@ -128,6 +132,7 @@ class AuthState(rx.State):
             self.user = None
             self.access_token = None
             self.refresh_token = None
+            self.session_checked = False
             self.is_loading = False
             
             # Clear tokens from both localStorage and sessionStorage
@@ -166,13 +171,14 @@ class AuthState(rx.State):
                 }
                 self.access_token = session.access_token
                 self.refresh_token = getattr(session, 'refresh_token', None)
+                self.session_checked = True
                 return
         except Exception as e:
             print(f"[DEBUG] get_session error: {e}")
         
-        # No valid server-side session found — don't clear state.
+        # No valid server-side session found — don't clear state or mark checked.
         # Restoration from browser localStorage is handled by on_mount
-        # via try_restore_from_storage. Clearing here would race with it.
+        # via try_restore_from_storage. That will mark session_checked = True.
     
     async def restore_session(self, user_id: str, user_email: str, access_token: str, refresh_token: str):
         """
@@ -358,16 +364,19 @@ class AuthState(rx.State):
                     except Exception as e:
                         print(f"[DEBUG] Could not set Supabase session: {e}")
                     
+                    self.session_checked = True
                     # Clear the restore flag in browser
                     yield rx.call_script("window._tytoRestoreInProgress = false;")
                 finally:
                     AuthState._session_restore_in_progress = False
             else:
-                # No valid tokens, redirect to login
+                # No valid tokens — mark checked so require_auth redirects
+                self.session_checked = True
                 print("[SAFARI] No valid tokens in storage, redirecting to login")
                 yield rx.redirect("/login")
                 
         except Exception as e:
+            self.session_checked = True
             print(f"[ERROR] Failed to parse storage tokens: {e}")
             yield rx.redirect("/login")
 
@@ -385,86 +394,97 @@ def require_auth(page) -> rx.Component:
         def dashboard() -> rx.Component:
             return require_auth(dashboard_content())
     """
-    return rx.cond(
-        AuthState.is_authenticated,
-        # Authenticated: show page with proactive refresh scripts
-        rx.fragment(
-            page,
-            # Proactive token refresh script (runs every 60s when page is visible)
-            rx.script(
-                """
-                (function() {
-                    // Prevent multiple initializations
-                    if (window._tytoProactiveRefreshInitialized) return;
-                    window._tytoProactiveRefreshInitialized = true;
+    # Proactive token refresh script (shared, only initialized once)
+    proactive_refresh_script = rx.script(
+        """
+        (function() {
+            // Prevent multiple initializations
+            if (window._tytoProactiveRefreshInitialized) return;
+            window._tytoProactiveRefreshInitialized = true;
+            
+            // Token expiry check function
+            function checkAndRefreshToken() {
+                const token = localStorage.getItem('safari_access_token');
+                if (!token) return;
+                
+                try {
+                    // Decode JWT to check expiry (tokens are base64 encoded)
+                    const parts = token.split('.');
+                    if (parts.length !== 3) return;
                     
-                    // Token expiry check function
-                    function checkAndRefreshToken() {
-                        const token = localStorage.getItem('safari_access_token');
-                        if (!token) return;
-                        
-                        try {
-                            // Decode JWT to check expiry (tokens are base64 encoded)
-                            const parts = token.split('.');
-                            if (parts.length !== 3) return;
-                            
-                            const payload = JSON.parse(atob(parts[1]));
-                            const expiresAt = payload.exp * 1000; // Convert to milliseconds
-                            const now = Date.now();
-                            const timeLeft = expiresAt - now;
-                            
-                            // Refresh if less than 5 minutes remaining
-                            if (timeLeft < 300000 && timeLeft > 0) {
-                                console.log('[SAFARI] Token expires in ' + Math.round(timeLeft/1000) + 's, refreshing proactively...');
-                                // Trigger Reflex backend event for proactive refresh
-                                if (window.__reflex && window.__reflex.call) {
-                                    window.__reflex.call('auth_state.proactive_refresh', []);
-                                }
-                            }
-                        } catch (e) {
-                            console.warn('[SAFARI] Could not parse token for expiry check:', e);
+                    const payload = JSON.parse(atob(parts[1]));
+                    const expiresAt = payload.exp * 1000; // Convert to milliseconds
+                    const now = Date.now();
+                    const timeLeft = expiresAt - now;
+                    
+                    // Refresh if less than 5 minutes remaining
+                    if (timeLeft < 300000 && timeLeft > 0) {
+                        console.log('[SAFARI] Token expires in ' + Math.round(timeLeft/1000) + 's, refreshing proactively...');
+                        // Trigger Reflex backend event for proactive refresh
+                        if (window.__reflex && window.__reflex.call) {
+                            window.__reflex.call('auth_state.proactive_refresh', []);
                         }
                     }
-                    
-                    // Check immediately on load
+                } catch (e) {
+                    console.warn('[SAFARI] Could not parse token for expiry check:', e);
+                }
+            }
+            
+            // Check immediately on load
+            checkAndRefreshToken();
+            
+            // Check every 60 seconds while page is visible
+            setInterval(function() {
+                if (document.visibilityState === 'visible') {
                     checkAndRefreshToken();
-                    
-                    // Check every 60 seconds while page is visible
-                    setInterval(function() {
-                        if (document.visibilityState === 'visible') {
-                            checkAndRefreshToken();
-                        }
-                    }, 60000);
-                    
-                    // Also check when tab becomes visible (handles sleep/wake, tab switching)
-                    document.addEventListener('visibilitychange', function() {
-                        if (document.visibilityState === 'visible') {
-                            console.log('[SAFARI] Tab became visible, checking token...');
-                            checkAndRefreshToken();
-                        }
-                    });
-                    
-                    console.log('[SAFARI] Proactive token refresh initialized');
-                })();
-                """
-            ),
-        ),
-        # Unauthenticated: show loading and try to restore via on_mount only
-        # This eliminates race conditions between multiple restoration paths
-        rx.fragment(
-            rx.center(
-                rx.vstack(
-                    rx.spinner(size="3"),
-                    rx.text("Loading...", style={"color": "#A1A1AA", "margin_top": "8px"}),
-                    align="center",
+                }
+            }, 60000);
+            
+            // Also check when tab becomes visible (handles sleep/wake, tab switching)
+            document.addEventListener('visibilitychange', function() {
+                if (document.visibilityState === 'visible') {
+                    console.log('[SAFARI] Tab became visible, checking token...');
+                    checkAndRefreshToken();
+                }
+            });
+            
+            console.log('[SAFARI] Proactive token refresh initialized');
+        })();
+        """
+    )
+    
+    return rx.cond(
+        AuthState.is_authenticated,
+        # Authenticated: show page with proactive refresh
+        rx.fragment(page, proactive_refresh_script),
+        # Not authenticated yet — check if we've completed the auth check
+        rx.cond(
+            AuthState.session_checked,
+            # Auth check complete, user is NOT authenticated → redirect to login
+            rx.fragment(
+                rx.center(
+                    rx.vstack(
+                        rx.text("Redirecting to login...", style={"color": "#A1A1AA"}),
+                        align="center",
+                    ),
+                    style={"min_height": "100vh", "background": "#0A0A0B"}
                 ),
-                style={"min_height": "100vh", "background": "#0A0A0B"}
             ),
-            # Hidden component that triggers restore when tokens exist
-            # Single restoration path via on_mount — no racing scripts
-            rx.box(
-                on_mount=AuthState.try_restore_from_storage,
-                style={"display": "none"},
+            # Auth check NOT yet complete → show loading + try restore from storage
+            rx.fragment(
+                rx.center(
+                    rx.vstack(
+                        rx.spinner(size="3"),
+                        rx.text("Loading...", style={"color": "#A1A1AA", "margin_top": "8px"}),
+                        align="center",
+                    ),
+                    style={"min_height": "100vh", "background": "#0A0A0B"}
+                ),
+                # Single restoration path via on_mount — no racing scripts
+                rx.box(
+                    on_mount=AuthState.try_restore_from_storage,
+                    style={"display": "none"},
+                )
             )
         )
     )
