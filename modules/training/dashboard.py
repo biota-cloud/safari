@@ -610,7 +610,7 @@ def configuration_card() -> rx.Component:
                     TrainingState.training_mode,
                     # Detection config
                     ("detection", rx.vstack(
-                        # Epochs (shared)
+                        # Epochs (detection)
                         rx.vstack(
                             rx.hstack(
                                 rx.text("Epochs", size="1", weight="medium", style={"color": styles.TEXT_PRIMARY}),
@@ -620,19 +620,42 @@ def configuration_card() -> rx.Component:
                                     size="1",
                                     weight="bold",
                                     style={"color": styles.ACCENT, "font_family": styles.FONT_FAMILY_MONO},
+                                    id="epochs-value-display",
                                 ),
                                 width="100%",
                             ),
                             rx.slider(
-                                value=[TrainingState.epochs],
+                                default_value=[TrainingState.epochs],
                                 min=10,
                                 max=500,
                                 step=10,
-                                on_change=TrainingState.set_epochs,
-                                on_value_commit=TrainingState.save_training_prefs,
+                                on_value_commit=TrainingState.set_epochs_commit,
                                 style={"width": "100%"},
                                 size="1",
+                                id="epochs-slider",
                             ),
+                            # JS: update displayed value during drag (zero WS traffic)
+                            rx.script("""
+                                (function() {
+                                    function init() {
+                                        var sl = document.getElementById('epochs-slider');
+                                        if (!sl) return false;
+                                        var thumb = sl.querySelector('[role="slider"]');
+                                        if (!thumb) return false;
+                                        var obs = new MutationObserver(function(ms) {
+                                            for (var i = 0; i < ms.length; i++) {
+                                                if (ms[i].attributeName === 'aria-valuenow') {
+                                                    var d = document.getElementById('epochs-value-display');
+                                                    if (d) d.textContent = thumb.getAttribute('aria-valuenow');
+                                                }
+                                            }
+                                        });
+                                        obs.observe(thumb, {attributes: true, attributeFilter: ['aria-valuenow']});
+                                        return true;
+                                    }
+                                    var iv = setInterval(function() { if (init()) clearInterval(iv); }, 500);
+                                })();
+                            """),
                             spacing="1",
                         ),
                         # 2-column grid for dropdowns

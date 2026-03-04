@@ -531,6 +531,12 @@ class TrainingState(rx.State):
         if value:
             self.epochs = value[0]
     
+    async def set_epochs_commit(self, value: list[int]):
+        """Set epochs from slider on release and save preferences."""
+        if value:
+            self.epochs = value[0]
+        await self.save_training_prefs()
+    
     def set_sam3_max_epochs(self, value: list[int]):
         """Set SAM3 max epochs from slider (live update, no save)."""
         if value:
