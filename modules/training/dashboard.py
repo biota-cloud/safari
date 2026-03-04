@@ -610,47 +610,64 @@ def configuration_card() -> rx.Component:
                     TrainingState.training_mode,
                     # Detection config
                     ("detection", rx.vstack(
-                        # Epochs (detection)
+                        # Epochs (detection) — native HTML range for zero-latency drag
                         rx.vstack(
                             rx.hstack(
                                 rx.text("Epochs", size="1", weight="medium", style={"color": styles.TEXT_PRIMARY}),
                                 rx.spacer(),
-                                rx.text(
+                                rx.el.span(
                                     TrainingState.epochs,
-                                    size="1",
-                                    weight="bold",
-                                    style={"color": styles.ACCENT, "font_family": styles.FONT_FAMILY_MONO},
                                     id="epochs-value-display",
+                                    style={
+                                        "font_size": "12px",
+                                        "font_weight": "700",
+                                        "color": styles.ACCENT,
+                                        "font_family": styles.FONT_FAMILY_MONO,
+                                    },
                                 ),
                                 width="100%",
                             ),
-                            rx.slider(
-                                default_value=[TrainingState.epochs],
-                                min=10,
-                                max=500,
-                                step=10,
-                                on_value_commit=TrainingState.set_epochs_commit,
-                                style={"width": "100%"},
-                                size="1",
-                                id="epochs-slider",
+                            # Hidden input bridge: Python handler fires on release
+                            rx.el.input(
+                                type="hidden",
+                                id="epochs-commit-input",
+                                on_change=TrainingState.set_epochs_from_js,
                             ),
-                            # JS: update displayed value during drag (zero WS traffic)
+                            # Native HTML range slider — zero WS during drag
+                            rx.el.input(
+                                type="range",
+                                min="10",
+                                max="500",
+                                step="10",
+                                default_value=TrainingState.epochs.to(str),
+                                id="epochs-range",
+                                style={
+                                    "width": "100%",
+                                    "height": "20px",
+                                    "cursor": "pointer",
+                                    "accent_color": styles.ACCENT,
+                                },
+                            ),
+                            # JS: input event = update display, change event = sync to Python
                             rx.script("""
                                 (function() {
                                     function init() {
-                                        var sl = document.getElementById('epochs-slider');
-                                        if (!sl) return false;
-                                        var thumb = sl.querySelector('[role="slider"]');
-                                        if (!thumb) return false;
-                                        var obs = new MutationObserver(function(ms) {
-                                            for (var i = 0; i < ms.length; i++) {
-                                                if (ms[i].attributeName === 'aria-valuenow') {
-                                                    var d = document.getElementById('epochs-value-display');
-                                                    if (d) d.textContent = thumb.getAttribute('aria-valuenow');
-                                                }
+                                        var sl = document.getElementById('epochs-range');
+                                        if (!sl || sl.dataset.bound) return false;
+                                        sl.dataset.bound = 'true';
+                                        sl.addEventListener('input', function() {
+                                            var d = document.getElementById('epochs-value-display');
+                                            if (d) d.textContent = sl.value;
+                                        });
+                                        sl.addEventListener('change', function() {
+                                            var h = document.getElementById('epochs-commit-input');
+                                            if (h) {
+                                                var setter = Object.getOwnPropertyDescriptor(
+                                                    window.HTMLInputElement.prototype, 'value').set;
+                                                setter.call(h, sl.value);
+                                                h.dispatchEvent(new Event('input', {bubbles: true}));
                                             }
                                         });
-                                        obs.observe(thumb, {attributes: true, attributeFilter: ['aria-valuenow']});
                                         return true;
                                     }
                                     var iv = setInterval(function() { if (init()) clearInterval(iv); }, 500);

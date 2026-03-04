@@ -537,6 +537,14 @@ class TrainingState(rx.State):
             self.epochs = value[0]
         await self.save_training_prefs()
     
+    async def set_epochs_from_js(self, value: str):
+        """Set epochs from native HTML range input via hidden input bridge."""
+        try:
+            self.epochs = int(value)
+            await self.save_training_prefs()
+        except (ValueError, TypeError):
+            pass
+    
     def set_sam3_max_epochs(self, value: list[int]):
         """Set SAM3 max epochs from slider (live update, no save)."""
         if value:
