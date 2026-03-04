@@ -67,20 +67,39 @@ pip install -r requirements.txt
 # Configure environment
 cp .env.production.example .env
 nano .env  # Fill in Supabase, R2, and app settings
+chmod 600 .env  # Restrict secrets to safari user only
 ```
 
 See [`.env.production.example`](../../.env.production.example) for all required variables with descriptions.
 
 ### Modal Authentication
 
+Modal handles GPU jobs (inference, training). Set it up on the server:
+
+1. Go to [modal.com/settings](https://modal.com/settings) → **API Tokens** → **Create new token**
+2. Modal will show you a ready-to-paste command — copy it:
+   ```
+   modal token set --token-id ak-... --token-secret as-...
+   ```
+3. Paste and run it on the server
+4. Verify: `modal app list` — should list your deployed apps
+
+This writes credentials to `~/.modal.toml` — one-time setup per machine.
+
+### Modal Secrets
+
+Before deploying jobs, create these secrets in the [Modal dashboard](https://modal.com/secrets):
+
+- **`r2-credentials`** — `R2_ENDPOINT_URL`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET_NAME`
+- **`supabase-credentials`** — `SUPABASE_URL`, `SUPABASE_KEY`, `SUPABASE_SERVICE_ROLE`
+
+### Deploy Modal Jobs
+
 ```bash
-pip install modal
-modal token set --token-id <your-token-id> --token-secret <your-token-secret>
-modal app list  # Verify connection
+./scripts/deploy_modal.sh
 ```
 
-> [!TIP]
-> For deploying Modal GPU jobs (inference, training, API), see the [Development Guide](../DEVELOPMENT.md#modal-gpu-deployment).
+This deploys all 6 GPU jobs + the API server in one command.
 
 ---
 
