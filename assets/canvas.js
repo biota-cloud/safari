@@ -2160,8 +2160,16 @@
         container.dataset.seekBound = 'true';
 
         function getTrackBounds() {
+            // Find the actual Radix slider track element for precise bounds
+            // Radix renders: container > span[role=group] > span[data-orientation] (track)
+            const track = container.querySelector('span[data-orientation="horizontal"]');
+            if (track) {
+                const rect = track.getBoundingClientRect();
+                return { left: rect.left, right: rect.right, width: rect.width };
+            }
+            // Fallback: use container
             const rect = container.getBoundingClientRect();
-            return { left: rect.left + 6, right: rect.right - 6, width: rect.width - 12 };
+            return { left: rect.left, right: rect.right, width: rect.width };
         }
 
         function getTotalFrames() {
