@@ -610,72 +610,29 @@ def configuration_card() -> rx.Component:
                     TrainingState.training_mode,
                     # Detection config
                     ("detection", rx.vstack(
-                        # Epochs (detection) — native HTML range for zero-latency drag
+                        # Epochs
                         rx.vstack(
                             rx.hstack(
                                 rx.text("Epochs", size="1", weight="medium", style={"color": styles.TEXT_PRIMARY}),
                                 rx.spacer(),
-                                rx.el.span(
+                                rx.text(
                                     TrainingState.epochs,
-                                    id="epochs-value-display",
-                                    style={
-                                        "font_size": "12px",
-                                        "font_weight": "700",
-                                        "color": styles.ACCENT,
-                                        "font_family": styles.FONT_FAMILY_MONO,
-                                    },
+                                    size="1",
+                                    weight="bold",
+                                    style={"color": styles.ACCENT, "font_family": styles.FONT_FAMILY_MONO},
                                 ),
                                 width="100%",
                             ),
-                            # Hidden input bridge: Python handler fires on release
-                            rx.el.input(
-                                type="hidden",
-                                id="epochs-commit-input",
-                                on_change=TrainingState.set_epochs_from_js,
+                            rx.slider(
+                                value=[TrainingState.epochs],
+                                min=10,
+                                max=500,
+                                step=10,
+                                on_change=TrainingState.set_epochs,
+                                on_value_commit=TrainingState.save_training_prefs,
+                                style={"width": "100%"},
+                                size="1",
                             ),
-                            # Native HTML range slider — ZERO Reflex bindings
-                            rx.el.input(
-                                type="range",
-                                min="10",
-                                max="500",
-                                step="10",
-                                id="epochs-range",
-                                style={
-                                    "width": "100%",
-                                    "height": "20px",
-                                    "cursor": "pointer",
-                                    "accent_color": styles.ACCENT,
-                                },
-                            ),
-                            # JS: set initial value + input/change event listeners
-                            rx.script("""
-                                (function() {
-                                    function init() {
-                                        var sl = document.getElementById('epochs-range');
-                                        if (!sl || sl.dataset.bound) return false;
-                                        sl.dataset.bound = 'true';
-                                        // Set initial value from the display text (from Python state)
-                                        var d = document.getElementById('epochs-value-display');
-                                        if (d && d.textContent) sl.value = d.textContent.trim();
-                                        // Update display on every drag tick (pure JS, zero WS)
-                                        sl.addEventListener('input', function() {
-                                            if (d) d.textContent = sl.value;
-                                        });
-                                        // Sync to Python on release via hidden input bridge
-                                        sl.addEventListener('change', function() {
-                                            var h = document.getElementById('epochs-commit-input');
-                                            if (h) {
-                                                var setter = Object.getOwnPropertyDescriptor(
-                                                    window.HTMLInputElement.prototype, 'value').set;
-                                                setter.call(h, sl.value);
-                                                h.dispatchEvent(new Event('input', {bubbles: true}));
-                                            }
-                                        });
-                                        return true;
-                                    }
-                                    var iv = setInterval(function() { if (init()) clearInterval(iv); }, 500);
-                                })();
-                            """),
                             spacing="1",
                         ),
                         # 2-column grid for dropdowns
