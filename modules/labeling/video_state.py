@@ -290,6 +290,7 @@ class VideoLabelingState(rx.State):
     # Annotation caching (for fast keyframe navigation)
     annotation_cache: dict[str, list] = {}  # keyframe_id -> annotations list
     cache_max_size: int = 100  # Cache up to 100 keyframes
+    _keyframe_frame_map: dict[int, int] = {}  # frame_number -> index in self.keyframes (Phase 4 optimization)
     
     # Auto-labeling state (SAM3 and YOLO modes) for keyframes
     autolabel_prompt: str = ""
@@ -768,6 +769,8 @@ class VideoLabelingState(rx.State):
             
             # Sort by frame number
             self.keyframes = sorted(self.keyframes, key=lambda k: k.frame_number)
+            # Build frame_number -> index map for O(1) lookups (Phase 4)
+            self._keyframe_frame_map = {kf.frame_number: i for i, kf in enumerate(self.keyframes)}
             perf_log(f"[PERF]     3c-2. Build models + populate cache (class names resolved): {(time.perf_counter()-t1)*1000:.1f}ms")
             
             print(f"[VideoLabeling] Loaded {len(self.keyframes)} keyframes with annotations (single query)")
@@ -805,6 +808,7 @@ class VideoLabelingState(rx.State):
             
             # Sort by frame number
             self.keyframes = sorted(self.keyframes, key=lambda k: k.frame_number)
+            self._keyframe_frame_map = {kf.frame_number: i for i, kf in enumerate(self.keyframes)}
             perf_log(f"[PERF]     3c-2. Build KeyframeModel list: {(time.perf_counter()-t1)*1000:.1f}ms")
             
             print(f"[VideoLabeling] Loaded {len(self.keyframes)} keyframes")
@@ -971,6 +975,7 @@ class VideoLabelingState(rx.State):
             
             # Sort by frame number
             self.keyframes = sorted(self.keyframes, key=lambda k: k.frame_number)
+            self._keyframe_frame_map = {kf.frame_number: i for i, kf in enumerate(self.keyframes)}
             
             print(f"[VideoLabeling] Loaded {len(self.keyframes)} keyframes")
         except Exception as e:
@@ -1066,6 +1071,10 @@ class VideoLabelingState(rx.State):
                 annotation_render = f"window.renderAnnotations && window.renderAnnotations({json.dumps(frame0_annotations)}); "
                 annotation_render += "window.setKeyframeSelected && window.setKeyframeSelected(true); "
             
+            # Phase 1: Push full annotation cache to JS for local rendering during playback/scrub
+            js_cache_data = self._build_js_annotation_cache()
+            js_cache_script = f"window.setVideoAnnotationCache && window.setVideoAnnotationCache({json.dumps(js_cache_data)}); "
+            
             # Build preload list for adjacent videos
             preload_list = self._get_videos_to_preload(idx)
             preload_script = ""
@@ -1091,6 +1100,7 @@ class VideoLabelingState(rx.State):
                 f"{js_time_start}"
                 f"setTimeout(function() {{ "
                 f"  {cache_size_script}"
+                f"  {js_cache_script}"
                 f"  if (window.loadVideoWithThumbnail) {{ "
                 f"    window.loadVideoWithThumbnail('{self.current_video_url}', '{thumbnail_url}', '{video_id}'); "
                 f"  }} else if (window.loadVideo) {{ "
@@ -1265,33 +1275,31 @@ class VideoLabelingState(rx.State):
         self.current_frame = frame
         self.current_timestamp = frame / self.fps if self.fps > 0 else 0
         
-        # Check if this frame is a keyframe
-        keyframe_found = False
-        for i, kf in enumerate(self.keyframes):
-            if kf.frame_number == frame:
-                # This frame is a keyframe - load its annotations
-                self.selected_keyframe_idx = i
-                self._load_keyframe_annotations_sync(kf.id)
-                keyframe_found = True
-                print(f"[VideoLabeling] Navigated to keyframe at frame {frame}, annotations={len(self.annotations)}")
-                break
+        # Check if this frame is a keyframe (O(1) lookup via Phase 4 map)
+        kf_idx = self._keyframe_frame_map.get(frame)
+        keyframe_found = kf_idx is not None
         
-        if not keyframe_found:
+        if keyframe_found:
+            kf = self.keyframes[kf_idx]
+            self.selected_keyframe_idx = kf_idx
+            self._load_keyframe_annotations_sync(kf.id)
+            print(f"[VideoLabeling] Navigated to keyframe at frame {frame}, annotations={len(self.annotations)}")
+        else:
             # Not a keyframe - clear selection and annotations
             self.selected_keyframe_idx = -1
             self.annotations = []
             self.selected_annotation_id = None
         
-        # Yield JS calls for seek and annotation rendering
-        yield rx.call_script(f"window.seekToFrame && window.seekToFrame({frame}, {self.fps})")
-        yield rx.call_script(f"window.renderAnnotations && window.renderAnnotations({json.dumps(self.annotations)})")
-        
-        # Auto-scroll to keyframe in sidebar if navigated to one
+        # Phase 3: Batch all JS calls into a single script (1 WS message instead of 3)
+        scroll_js = ""
         if keyframe_found:
-            yield rx.call_script(
-                f"document.getElementById('keyframe-{frame}')"
-                f"?.scrollIntoView({{ behavior: 'smooth', block: 'nearest' }})"
-            )
+            scroll_js = f"document.getElementById('keyframe-{frame}')?.scrollIntoView({{behavior:'smooth',block:'nearest'}});"
+        
+        yield rx.call_script(
+            f"window.seekToFrame && window.seekToFrame({frame}, {self.fps});"
+            f"window.renderAnnotations && window.renderAnnotations({json.dumps(self.annotations)});"
+            f"{scroll_js}"
+        )
     
     def step_frame(self, delta: int):
         """Step forward or backward by delta frames."""
@@ -1300,35 +1308,35 @@ class VideoLabelingState(rx.State):
 
     
     def handle_frame_update(self, data_json: str):
-        """Called from JS when the video frame changes during playback."""
+        """Called from JS when the video frame changes during playback.
+        
+        PERF OPTIMIZATION (Phase 1): This is now called at ~4fps (throttled in JS)
+        instead of ~30fps. It only updates the Python-side frame counter for UI
+        display. Annotation rendering is handled entirely in JS via the
+        videoAnnotationCache. No renderAnnotations callback is sent.
+        """
         try:
             data = json.loads(data_json)
             new_frame = data.get("frame", 0)
             self.current_frame = new_frame
             self.current_timestamp = data.get("timestamp", 0.0)
             
-            # Check if new frame is a keyframe and load/clear annotations
-            keyframe_found = False
-            for i, kf in enumerate(self.keyframes):
-                if kf.frame_number == new_frame:
-                    # Frame is a keyframe - load annotations from cache
-                    self.selected_keyframe_idx = i
-                    if kf.id in self.annotation_cache:
-                        self.annotations = self.annotation_cache[kf.id].copy()
-                    else:
-                        self.annotations = []
-                    self.selected_annotation_id = None
-                    keyframe_found = True
-                    break
-            
-            if not keyframe_found:
-                # Not a keyframe - clear annotations
+            # Update keyframe selection state for UI badges (O(1) lookup)
+            kf_idx = self._keyframe_frame_map.get(new_frame)
+            if kf_idx is not None:
+                self.selected_keyframe_idx = kf_idx
+                kf = self.keyframes[kf_idx]
+                if kf.id in self.annotation_cache:
+                    self.annotations = self.annotation_cache[kf.id].copy()
+                else:
+                    self.annotations = []
+                self.selected_annotation_id = None
+            else:
                 self.selected_keyframe_idx = -1
                 self.annotations = []
                 self.selected_annotation_id = None
             
-            # Render annotations on canvas
-            return rx.call_script(f"window.renderAnnotations && window.renderAnnotations({json.dumps(self.annotations)})")
+            # No renderAnnotations callback — JS handles it from its own cache
             
         except Exception as e:
             print(f"[VideoLabeling] Error parsing frame update: {e}")
@@ -1472,12 +1480,14 @@ class VideoLabelingState(rx.State):
                     key=lambda k: k.frame_number
                 )
                 
+                # Rebuild frame map after adding keyframe (Phase 4)
+                self._keyframe_frame_map = {kf.frame_number: i for i, kf in enumerate(self.keyframes)}
+                
                 # Auto-select the newly created keyframe
-                for i, kf in enumerate(self.keyframes):
-                    if kf.frame_number == frame_number:
-                        self.selected_keyframe_idx = i
-                        self.annotations = []  # New keyframe has no annotations yet
-                        break
+                kf_idx = self._keyframe_frame_map.get(frame_number)
+                if kf_idx is not None:
+                    self.selected_keyframe_idx = kf_idx
+                    self.annotations = []  # New keyframe has no annotations yet
                 
                 print(f"[VideoLabeling] Keyframe marked at frame {frame_number}, auto-selected idx={self.selected_keyframe_idx}")
                 
@@ -1938,7 +1948,21 @@ class VideoLabelingState(rx.State):
     def _clear_annotation_cache(self):
         """Clear annotation cache (call when switching videos)."""
         self.annotation_cache = {}
+        self._keyframe_frame_map = {}
         print("[Cache] Cleared annotation cache")
+    
+    def _build_js_annotation_cache(self) -> dict:
+        """Build a frame_number-keyed dict for the JS-side annotation cache.
+        
+        Converts the Python annotation_cache (keyed by keyframe_id) to a
+        dict keyed by frame_number (int) for fast O(1) lookups in JS
+        during playback and slider drag.
+        """
+        js_cache = {}
+        for kf in self.keyframes:
+            anns = self.annotation_cache.get(kf.id, [])
+            js_cache[kf.frame_number] = anns
+        return js_cache
     
     def delete_keyframe(self, keyframe_id: str):
         """Delete a keyframe and its annotations."""
@@ -1982,6 +2006,9 @@ class VideoLabelingState(rx.State):
             # Remove from local state
             self.keyframes = [kf for kf in self.keyframes if kf.id != keyframe_id]
             
+            # Rebuild frame map after deletion (Phase 4)
+            self._keyframe_frame_map = {kf.frame_number: i for i, kf in enumerate(self.keyframes)}
+            
             # Remove from annotation cache
             if keyframe_id in self.annotation_cache:
                 del self.annotation_cache[keyframe_id]
@@ -1990,9 +2017,12 @@ class VideoLabelingState(rx.State):
             if was_selected:
                 self.selected_keyframe_idx = -1
                 self.annotations = []
-                # Push empty annotations to JS to clear canvas
+                # Push empty annotations to JS and clear the JS cache entry
                 return [
-                    rx.call_script("window.renderAnnotations && window.renderAnnotations([])"),
+                    rx.call_script(
+                        f"window.renderAnnotations && window.renderAnnotations([]);"
+                        f"window.updateVideoAnnotationCacheFrame && window.updateVideoAnnotationCacheFrame({keyframe.frame_number}, []);"
+                    ),
                     rx.toast.success("Keyframe deleted"),
                 ]
             
@@ -2203,6 +2233,7 @@ class VideoLabelingState(rx.State):
             
             # Remove from local state
             self.keyframes = [kf for kf in self.keyframes if kf.id not in ids_to_delete]
+            self._keyframe_frame_map = {kf.frame_number: i for i, kf in enumerate(self.keyframes)}
             
             # Remove from annotation cache
             for kf_id in ids_to_delete:
@@ -2964,8 +2995,15 @@ class VideoLabelingState(rx.State):
         await self._save_current_keyframe_annotations()
     
     def push_annotations_to_js(self):
-        """Send all annotations to JS for rendering."""
-        return rx.call_script(f"window.renderAnnotations && window.renderAnnotations({json.dumps(self.annotations)})")
+        """Send all annotations to JS for rendering, and update the JS-side cache."""
+        # Also sync the JS annotation cache for the current frame (Phase 1)
+        cache_update = ""
+        if self.current_frame >= 0:
+            cache_update = f"window.updateVideoAnnotationCacheFrame && window.updateVideoAnnotationCacheFrame({self.current_frame}, {json.dumps(self.annotations)});"
+        return rx.call_script(
+            f"window.renderAnnotations && window.renderAnnotations({json.dumps(self.annotations)});"
+            f"{cache_update}"
+        )
     
     # =========================================================================
     # CLASS MANAGEMENT
@@ -3333,6 +3371,7 @@ class VideoLabelingState(rx.State):
 
             # Remove from local state
             self.keyframes = [kf for kf in self.keyframes if kf.id not in empty_kf_ids]
+            self._keyframe_frame_map = {kf.frame_number: i for i, kf in enumerate(self.keyframes)}
             
             # Clear selection if needed
             self.selected_keyframe_ids = [id for id in self.selected_keyframe_ids if id not in empty_kf_ids]

@@ -307,7 +307,6 @@ def video_controls() -> rx.Component:
                     100
                 ),
                 step=1,
-                on_change=VideoLabelingState.handle_slider_drag,
                 on_value_commit=VideoLabelingState.handle_slider_change,
                 width="100%",
                 size="1",

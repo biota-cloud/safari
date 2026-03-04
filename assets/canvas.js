@@ -2108,6 +2108,44 @@
     let hasSelectedKeyframe = false; // Track if keyframe is selected for drawing block
     let videoFrameBuffer = null;     // Persistent offscreen canvas for frame persistence during seeks
 
+    // ── JS-SIDE ANNOTATION CACHE (Phase 1 perf optimization) ──
+    // Keyed by frame_number (int) → annotation array.
+    // Pushed from Python on video switch / annotation save.
+    // Eliminates ~56/60 WS messages/sec during playback.
+    let videoAnnotationCache = {};   // frame_number -> annotations[]
+    let _lastPythonSyncTime = 0;     // Timestamp of last frame sync to Python
+    const PYTHON_SYNC_INTERVAL = 250; // ms — sync frame counter to Python at ~4fps
+
+    /**
+     * Set the JS-side annotation cache for the current video.
+     * Called from Python after loading keyframes & annotations.
+     * @param {Object} cacheData - {frame_number: [annotations...], ...}
+     */
+    window.setVideoAnnotationCache = function (cacheData) {
+        videoAnnotationCache = cacheData || {};
+        const count = Object.keys(videoAnnotationCache).length;
+        console.log('[PerfOpt] JS annotation cache set:', count, 'keyframes');
+    };
+
+    /**
+     * Update a single frame's annotations in the JS cache.
+     * Called from Python after an annotation is added/modified/deleted.
+     * @param {number} frameNumber - The keyframe's frame number
+     * @param {Array} anns - The updated annotations array
+     */
+    window.updateVideoAnnotationCacheFrame = function (frameNumber, anns) {
+        videoAnnotationCache[frameNumber] = anns || [];
+        console.log('[PerfOpt] JS cache updated for frame', frameNumber, ':', (anns || []).length, 'annotations');
+    };
+
+    /**
+     * Clear the JS-side annotation cache.
+     */
+    window.clearVideoAnnotationCache = function () {
+        videoAnnotationCache = {};
+        console.log('[PerfOpt] JS annotation cache cleared');
+    };
+
     // Video cache for preloading adjacent videos
     const videoCache = {
         elements: new Map(),  // video_id -> {video: VideoElement, url: string, ready: bool}
@@ -2567,8 +2605,11 @@
 
     /**
      * Start animation loop for video playback.
-     * Throttled to ~30fps to reduce unnecessary canvas draws for high-FPS sources.
-     * Seeking/frame-stepping via seekToFrame is NOT throttled (renders immediately).
+     * Throttled to ~30fps for canvas draws.
+     * 
+     * PERF OPTIMIZATION (Phase 1):
+     * - Annotations are rendered locally from videoAnnotationCache (zero WS traffic)
+     * - Python frame sync is throttled to ~4fps (PYTHON_SYNC_INTERVAL) for UI counter only
      */
     function startVideoFrameLoop() {
         if (videoAnimationFrame) {
@@ -2583,7 +2624,23 @@
                 if (now - lastFrameTime >= minFrameInterval) {
                     lastFrameTime = now;
                     drawVideoFrameToCanvas();
-                    syncFrameToPython();
+
+                    // Render annotations from JS-side cache (zero latency)
+                    const currentFrame = Math.floor(sourceVideo.currentTime * videoFps);
+                    const cachedAnns = videoAnnotationCache[currentFrame];
+                    annotations = cachedAnns || [];
+                    // drawCanvas is already called by drawVideoFrameToCanvas,
+                    // but annotations are set after — trigger one more draw
+                    // only if we actually have annotations to show
+                    if (cachedAnns && cachedAnns.length > 0) {
+                        drawCanvas();
+                    }
+
+                    // Throttled sync to Python for UI counter updates only (~4fps)
+                    if (now - _lastPythonSyncTime >= PYTHON_SYNC_INTERVAL) {
+                        _lastPythonSyncTime = now;
+                        syncFrameToPython();
+                    }
                 }
                 videoAnimationFrame = requestAnimationFrame(loop);
             }
@@ -2593,7 +2650,8 @@
 
 
     /**
-     * Sync current frame position to Python
+     * Sync current frame position to Python (throttled, UI counter only).
+     * No longer triggers renderAnnotations callback — annotations are handled JS-side.
      */
     function syncFrameToPython() {
         if (!sourceVideo) return;
