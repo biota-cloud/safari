@@ -323,7 +323,7 @@ class AuthState(rx.State):
             user_id = tokens.get("user_id", "")
             user_email = tokens.get("user_email", "")
             
-            if access_token and refresh_token and user_id and user_email:
+            if access_token and user_id and user_email:
                 # Singleton gate: prevent parallel restoration attempts
                 if AuthState._session_restore_in_progress:
                     print("[DEBUG] Session restore already in progress, skipping...")
@@ -342,42 +342,79 @@ class AuthState(rx.State):
                     # Set session in Supabase client for API calls
                     try:
                         supabase = get_supabase_auth()
-                        supabase.auth.set_session(access_token, refresh_token)
+                        if refresh_token:
+                            supabase.auth.set_session(access_token, refresh_token)
                         
-                        # Get the new session with refreshed tokens
-                        new_session = supabase.auth.get_session()
-                        if new_session and new_session.refresh_token and new_session.refresh_token != refresh_token:
-                            # Update state with new tokens
-                            self.access_token = new_session.access_token
-                            self.refresh_token = new_session.refresh_token
-                            
-                            # Atomically update localStorage with new tokens to prevent stale token reuse
-                            yield rx.call_script(f"""
-                                localStorage.setItem('safari_access_token', '{new_session.access_token}');
-                                localStorage.setItem('safari_refresh_token', '{new_session.refresh_token}');
-                                sessionStorage.setItem('safari_access_token', '{new_session.access_token}');
-                                sessionStorage.setItem('safari_refresh_token', '{new_session.refresh_token}');
-                            """)
-                            print(f"[SAFARI] Tokens refreshed and stored for: {user_email}")
+                            # Get the new session with refreshed tokens
+                            new_session = supabase.auth.get_session()
+                            if new_session and new_session.refresh_token and new_session.refresh_token != refresh_token:
+                                # Update state with new tokens
+                                self.access_token = new_session.access_token
+                                self.refresh_token = new_session.refresh_token
+                                
+                                # Atomically update localStorage with new tokens
+                                yield rx.call_script(f"""
+                                    localStorage.setItem('safari_access_token', '{new_session.access_token}');
+                                    localStorage.setItem('safari_refresh_token', '{new_session.refresh_token}');
+                                    sessionStorage.setItem('safari_access_token', '{new_session.access_token}');
+                                    sessionStorage.setItem('safari_refresh_token', '{new_session.refresh_token}');
+                                """)
+                                print(f"[SAFARI] Tokens refreshed and stored for: {user_email}")
+                            else:
+                                print(f"[SAFARI] Session restored seamlessly for: {user_email}")
                         else:
-                            print(f"[SAFARI] Session restored seamlessly for: {user_email}")
+                            print(f"[SAFARI] Session restored (no refresh token) for: {user_email}")
                     except Exception as e:
-                        print(f"[DEBUG] Could not set Supabase session: {e}")
+                        # Token might be expired — clear user state so we redirect properly
+                        print(f"[SAFARI] Session restore failed (token likely expired): {e}")
+                        self.user = None
+                        self.access_token = None
+                        self.refresh_token = None
+                        # Clear stale tokens from browser to break any redirect loop
+                        yield rx.call_script("""
+                            localStorage.removeItem('safari_access_token');
+                            localStorage.removeItem('safari_refresh_token');
+                            localStorage.removeItem('safari_user_id');
+                            localStorage.removeItem('safari_user_email');
+                            sessionStorage.removeItem('safari_access_token');
+                            sessionStorage.removeItem('safari_refresh_token');
+                            sessionStorage.removeItem('safari_user_id');
+                            sessionStorage.removeItem('safari_user_email');
+                        """)
                     
                     self.session_checked = True
-                    # Clear the restore flag in browser
                     yield rx.call_script("window._tytoRestoreInProgress = false;")
                 finally:
                     AuthState._session_restore_in_progress = False
             else:
-                # No valid tokens — mark checked so require_auth redirects
+                # No valid tokens — clear stale tokens to break redirect loop, then redirect
                 self.session_checked = True
-                print("[SAFARI] No valid tokens in storage, redirecting to login")
+                print("[SAFARI] No valid tokens in storage, clearing and redirecting to login")
+                yield rx.call_script("""
+                    localStorage.removeItem('safari_access_token');
+                    localStorage.removeItem('safari_refresh_token');
+                    localStorage.removeItem('safari_user_id');
+                    localStorage.removeItem('safari_user_email');
+                    sessionStorage.removeItem('safari_access_token');
+                    sessionStorage.removeItem('safari_refresh_token');
+                    sessionStorage.removeItem('safari_user_id');
+                    sessionStorage.removeItem('safari_user_email');
+                """)
                 yield rx.redirect("/login")
                 
         except Exception as e:
             self.session_checked = True
             print(f"[ERROR] Failed to parse storage tokens: {e}")
+            yield rx.call_script("""
+                localStorage.removeItem('safari_access_token');
+                localStorage.removeItem('safari_refresh_token');
+                localStorage.removeItem('safari_user_id');
+                localStorage.removeItem('safari_user_email');
+                sessionStorage.removeItem('safari_access_token');
+                sessionStorage.removeItem('safari_refresh_token');
+                sessionStorage.removeItem('safari_user_id');
+                sessionStorage.removeItem('safari_user_email');
+            """)
             yield rx.redirect("/login")
 
 
