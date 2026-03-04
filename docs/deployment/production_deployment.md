@@ -1,0 +1,250 @@
+# SAFARI Production Deployment Guide
+
+> Deploy SAFARI on a VPS behind [Tailscale](https://tailscale.com) using **systemd**.  
+> All heavy compute runs on [Modal](https://modal.com) — the VPS only serves the UI.
+
+---
+
+## Prerequisites
+
+| Requirement | Details |
+|-------------|---------|
+| **VPS** | Hetzner CX22 (2 vCPU, 4GB RAM, ~€4/mo) or equivalent |
+| **OS** | Ubuntu 24.04 LTS |
+| **Tailscale** | Installed on both server and all client machines |
+| **Credentials** | Supabase URL + keys, Cloudflare R2 keys, Modal token |
+
+> [!NOTE]
+> No public domain or SSL certificate needed. Tailscale provides encrypted point-to-point tunnels. The app is only accessible within your Tailscale network.
+
+---
+
+## 1. Server Setup
+
+SSH into your VPS and install system packages:
+
+```bash
+ssh root@YOUR_SERVER_IP
+
+# System updates
+apt update && apt upgrade -y
+
+# Add deadsnakes PPA for Python 3.11
+# (Ubuntu 24.04 ships with 3.12, but we match the dev environment exactly)
+add-apt-repository ppa:deadsnakes/ppa -y
+apt update
+
+# Install Python 3.11 and system dependencies
+apt install -y python3.11 python3.11-venv git curl ffmpeg
+
+# Install Tailscale
+curl -fsSL https://tailscale.com/install.sh | sh
+tailscale up
+
+# Create service user and app directory
+useradd -r -m -s /bin/bash safari
+mkdir -p /opt/safari
+chown safari:safari /opt/safari
+```
+
+---
+
+## 2. Application Setup
+
+```bash
+# Switch to service user
+su - safari
+cd /opt/safari
+
+# Clone repository
+git clone https://github.com/biota-cloud/safari.git .
+
+# Create virtual environment
+python3.11 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+
+# Configure environment
+cp .env.production.example .env
+nano .env  # Fill in Supabase, R2, and app settings
+```
+
+See [`.env.production.example`](../../.env.production.example) for all required variables with descriptions.
+
+### Modal Authentication
+
+```bash
+pip install modal
+modal token set --token-id <your-token-id> --token-secret <your-token-secret>
+modal app list  # Verify connection
+```
+
+> [!TIP]
+> For deploying Modal GPU jobs (inference, training, API), see the [Development Guide](../DEVELOPMENT.md#modal-gpu-deployment).
+
+---
+
+## 3. Create systemd Service
+
+```bash
+sudo tee /etc/systemd/system/safari.service > /dev/null << 'EOF'
+[Unit]
+Description=SAFARI Wildlife Platform
+After=network.target
+
+[Service]
+Type=simple
+User=safari
+WorkingDirectory=/opt/safari
+EnvironmentFile=/opt/safari/.env
+ExecStart=/opt/safari/.venv/bin/reflex run --env prod
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+# Enable and start
+sudo systemctl enable --now safari
+```
+
+The service will:
+- **Start automatically** on boot
+- **Restart on crash** (after 5 seconds)
+- **Persist after SSH disconnect** — it's managed by the OS, not your session
+
+---
+
+## 4. Verify
+
+```bash
+# Check service status
+systemctl status safari
+
+# Check logs
+journalctl -u safari -f
+```
+
+Then from any machine on your Tailscale network, open `http://<server-tailscale-ip>:3000` in a browser.
+
+### Post-deployment checklist
+
+- [ ] App loads at Tailscale URL
+- [ ] Login page shows "SAFARI" branding
+- [ ] Login with Supabase works
+- [ ] Modal inference jobs trigger successfully
+- [ ] R2 image uploads/downloads function
+- [ ] WebSocket connection is stable (no frequent disconnects)
+
+---
+
+## 5. (Optional) Caddy Reverse Proxy
+
+Caddy provides a clean `:80` URL, gzip compression, and security headers. It's **not required** — without it, access the app directly on port `3000`.
+
+If you want it:
+
+```bash
+# Install Caddy
+apt install -y debian-keyring debian-archive-keyring apt-transport-https
+curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | tee /etc/apt/sources.list.d/caddy-stable.list
+apt update && apt install -y caddy
+
+# Copy the included Caddyfile
+cp /opt/safari/Caddyfile /etc/caddy/Caddyfile
+systemctl reload caddy
+```
+
+The included Caddyfile listens on `:80` and proxies to the local Reflex app. With Caddy, access the app at `http://<server-tailscale-ip>` (no port needed).
+
+> [!NOTE]
+> If you ever need public access, change `:80` to your domain name (e.g., `safari.example.com`) in the Caddyfile and Caddy will auto-provision SSL via Let's Encrypt.
+
+---
+
+## Operations
+
+### View Logs
+
+```bash
+# Live logs
+journalctl -u safari -f
+
+# Last 100 lines
+journalctl -u safari -n 100
+
+# Logs since last boot
+journalctl -u safari -b
+```
+
+### Update Deployment
+
+```bash
+cd /opt/safari && git pull
+source .venv/bin/activate
+pip install -r requirements.txt
+sudo systemctl restart safari
+```
+
+> [!TIP]
+> You can save this as `/opt/safari/scripts/update.sh` for convenience.
+
+### Restart / Stop
+
+```bash
+sudo systemctl restart safari
+sudo systemctl stop safari
+```
+
+### Enable Firewall
+
+```bash
+apt install ufw -y
+ufw allow 22      # SSH
+ufw allow 3000    # Reflex (direct access, skip if using Caddy)
+ufw allow 80      # HTTP (only if using Caddy)
+ufw allow 41641   # Tailscale
+ufw enable
+```
+
+> [!NOTE]
+> Tailscale traffic uses UDP port 41641 (or may use DERP relays without any port opening). Port 443 is not needed unless you add public SSL via Caddy.
+
+---
+
+## Architecture
+
+```
+┌──────────────────────────────────────────────┐
+│              Hetzner VPS (CX22)              │
+│                                              │
+│   Tailscale ─── Reflex App (3000/8000)       │
+│                 (+ optional Caddy :80)        │
+└──────────────────────────────────────────────┘
+         │                    │
+         ▼                    ▼
+   ┌───────────┐       ┌─────────────┐
+   │  Supabase │       │    Modal    │
+   │    (DB)   │       │  (GPU Jobs) │
+   └───────────┘       └─────────────┘
+         │                    │
+         └────────┬───────────┘
+                  ▼
+           ┌─────────────┐
+           │ Cloudflare  │
+           │     R2      │
+           └─────────────┘
+```
+
+## Cost
+
+| Service | Monthly Cost |
+|---------|-------------|
+| Hetzner CX22 | ~€4 |
+| Tailscale | Free (personal) / included (company) |
+| Modal | Pay-per-use (existing) |
+| Supabase | Free tier / existing |
+| Cloudflare R2 | Pay-per-use (existing) |
+| **Total** | **~€4/month** + usage |

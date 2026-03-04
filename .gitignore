@@ -1,0 +1,58 @@
+# Reflex / Build artifacts
+.web/
+.states/
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.db
+
+# Python virtual environment
+.venv/
+venv/
+env/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Environment & Secrets (NEVER commit these!)
+.env
+.env.local
+.env.*.local
+.env.production
+
+# External assets (downloaded at runtime)
+assets/external/
+
+# Test outputs
+annotated_keyframes/
+downloaded_keyframes/
+debug_output/
+uploaded_files/
+verified_annotations/
+
+# Modal cache
+.modal/
+
+# OS files
+Thumbs.db
+
+# Model weights (large binary files)
+*.pt
+*.pth
+*.onnx
+
+# Debug & test outputs
+scripts/label_debug_output/
+test_image.jpg
+
+# Backup files
+*.bak
+*.bak2
+
+# Export archives (generated at runtime)
+assets/exports/

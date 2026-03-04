@@ -1,0 +1,30 @@
+# Tyto Remote GPU Worker Requirements
+# This file mirrors Modal image dependencies for local GPU execution.
+
+# Core ML frameworks
+ultralytics>=8.3.237  # YOLO11 + SAM3 support
+
+# AWS / R2 storage
+boto3
+
+# Supabase for database
+supabase
+
+# HTTP
+requests
+
+# Image processing
+pillow
+
+# SAM3 dependencies
+ftfy       # Required by CLIP
+regex      # Required by CLIP
+timm       # Required by some SAM3 backbones
+huggingface_hub
+
+# Web API server (for future daemon mode)
+fastapi
+uvicorn
+
+# Environment
+python-dotenv

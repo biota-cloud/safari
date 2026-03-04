@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  SAFARI Icon Mark — SVG Recreation (Placeholder)
+  
+  The "[●]" icon mark extracted from the full SAFARI logo.
+  Suitable for favicon, app icon, small badges.
+  
+  Replace with official vector when available from Biota.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 80" width="80" height="80">
+  <defs>
+    <style>
+      .bracket { fill: none; stroke: currentColor; stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; }
+      .dot { fill: #6BBF59; }
+    </style>
+  </defs>
+  
+  <!-- Left bracket [ -->
+  <path class="bracket" d="M 18 10 L 6 10 L 6 70 L 18 70" />
+  
+  <!-- Green dot ● -->
+  <circle class="dot" cx="40" cy="42" r="12" />
+  
+  <!-- Right bracket ] -->
+  <path class="bracket" d="M 62 10 L 74 10 L 74 70 L 62 70" />
+</svg>

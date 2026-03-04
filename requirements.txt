@@ -1,0 +1,19 @@
+# Python dependencies for Tyto
+reflex==0.8.24.post1
+modal>=1.3.0
+pyyaml
+
+# Backend / Database
+supabase>=2.0.0
+boto3>=1.34.0
+python-dotenv>=1.0.0
+paramiko>=3.0.0
+
+# ML / Vision
+ultralytics>=8.3.0
+pillow>=10.0.0
+
+# System dependencies (install via Homebrew/apt):
+# - ffmpeg: Required for video thumbnail generation and metadata extraction
+#   macOS:  brew install ffmpeg
+#   Ubuntu: sudo apt install ffmpeg

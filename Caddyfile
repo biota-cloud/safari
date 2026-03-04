@@ -1,0 +1,32 @@
+# Caddyfile for SAFARI
+# Internal-only deployment behind Tailscale — no public SSL needed.
+# To enable public access, replace :80 with your domain (e.g., safari.example.com)
+# and Caddy will auto-provision SSL via Let's Encrypt.
+
+:80 {
+    # Reflex frontend
+    reverse_proxy localhost:3000
+
+    # WebSocket support for Reflex
+    @websockets {
+        header Connection *Upgrade*
+        header Upgrade websocket
+    }
+    reverse_proxy @websockets localhost:8000
+
+    # Compression
+    encode gzip
+
+    # Security headers
+    header {
+        X-Content-Type-Options nosniff
+        X-Frame-Options DENY
+        Referrer-Policy strict-origin-when-cross-origin
+    }
+
+    # Logging
+    log {
+        output file /var/log/caddy/safari.log
+        format json
+    }
+}

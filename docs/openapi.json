@@ -1,0 +1,934 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "SAFARI Inference API",
+    "description": "Public REST API for wildlife detection model inference.\n\n## Model Types\n\nThe API supports two model types that determine the inference pipeline:\n\n- **detection**: Standard YOLO object detection\n- **classification**: Hybrid SAM3 + YOLOv11-Classify (detect-then-classify)\n\nThe `model_type` is returned in responses so clients can understand which pipeline was used.\n\n## Internal Documentation\n\nFor detailed technical information about routing logic and processing pipelines, see `docs/API_INTERNALS.md`.",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/api/v1/infer/{model_slug}": {
+      "post": {
+        "tags": [
+          "inference"
+        ],
+        "summary": "Infer Image",
+        "description": "Run inference on a single image.\n\n- **model_slug**: Unique identifier for the model (e.g., \"lynx-detector-v2\")\n- **file**: Image file (JPEG, PNG, WebP)\n- **confidence**: Detection/classification confidence threshold (0-1)\n\n**Routing by model_type:**\n- `detection`: Uses YOLO model directly\n- `classification`: Uses SAM3 for detection + YOLOv11-Classify for species ID\n\nReturns predictions with bounding boxes in normalized coordinates (0-1).",
+        "operationId": "infer_image_api_v1_infer__model_slug__post",
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "model_slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Model Slug"
+            }
+          },
+          {
+            "name": "confidence",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "number",
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "description": "Confidence threshold for predictions. For hybrid models, this filters classifier output.",
+              "default": 0.25,
+              "title": "Confidence"
+            },
+            "description": "Confidence threshold"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_infer_image_api_v1_infer__model_slug__post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImageInferenceResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/infer/{model_slug}/video": {
+      "post": {
+        "tags": [
+          "inference"
+        ],
+        "summary": "Submit Video Job",
+        "description": "Submit a video for async inference processing.\n\n- **model_slug**: Unique identifier for the model\n- **file**: Video file (MP4, MOV, AVI)\n- **confidence**: Detection/classification confidence threshold (0-1)\n- **frame_skip**: Return every Nth frame in results (1 = all frames, 5 = every 5th)\n- **start_time**: Start processing from this time (seconds)\n- **end_time**: Stop processing at this time (seconds)\n\n**Routing by model_type:**\n- `detection`: Uses YOLO with vid_stride (no temporal tracking)\n- `classification`: Uses SAM3VideoSemanticPredictor with full temporal tracking\n\n**Important:** For classification models, SAM3 always processes ALL frames for accurate tracking. The `frame_skip` parameter only filters which frames appear in the output results.\n\nReturns a job_id to poll for progress at /api/v1/jobs/{job_id}",
+        "operationId": "submit_video_job_api_v1_infer__model_slug__video_post",
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "model_slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Model Slug"
+            }
+          },
+          {
+            "name": "confidence",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "number",
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "description": "Confidence threshold for predictions",
+              "default": 0.25,
+              "title": "Confidence"
+            },
+            "description": "Confidence threshold"
+          },
+          {
+            "name": "frame_skip",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 30,
+              "minimum": 1,
+              "description": "Return every Nth frame in results. Note: For classification models using SAM3, all frames are still processed internally for tracking accuracy.",
+              "default": 1,
+              "title": "Frame Skip"
+            },
+            "description": "Return every Nth frame in results"
+          },
+          {
+            "name": "start_time",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "number",
+              "minimum": 0.0,
+              "description": "Start time in seconds",
+              "default": 0.0,
+              "title": "Start Time"
+            },
+            "description": "Start time in seconds"
+          },
+          {
+            "name": "end_time",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "minimum": 0.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "End time in seconds",
+              "title": "End Time"
+            },
+            "description": "End time in seconds"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_submit_video_job_api_v1_infer__model_slug__video_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VideoJobResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/infer/{model_slug}/batch": {
+      "post": {
+        "tags": [
+          "inference"
+        ],
+        "summary": "Infer Batch",
+        "description": "Run inference on multiple images in a single call.\n\nOptimized for high-throughput frame sequences (e.g., from SAFARIDesktop client). Models are loaded once and reused across all images, eliminating cold start overhead.\n\n- **model_slug**: Unique identifier for the model\n- **files**: Multiple image files (max 100 images, 10MB each)\n- **confidence**: Detection/classification confidence threshold (0-1)\n\n**Routing by model_type:**\n- `detection`: Uses YOLO model directly\n- `classification`: Uses SAM3SemanticPredictor + YOLOv11-Classify\n\nReturns predictions for each image with preserved order.",
+        "operationId": "infer_batch_api_v1_infer__model_slug__batch_post",
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "model_slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Model Slug"
+            }
+          },
+          {
+            "name": "confidence",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "number",
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "description": "Confidence threshold for predictions",
+              "default": 0.25,
+              "title": "Confidence"
+            },
+            "description": "Confidence threshold"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_infer_batch_api_v1_infer__model_slug__batch_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchInferenceResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/jobs/{job_id}": {
+      "get": {
+        "tags": [
+          "jobs"
+        ],
+        "summary": "Get Job Status",
+        "description": "Get the status and progress of an async job.\n\n- **job_id**: The job ID returned from video submission\n\nPoll this endpoint periodically to track progress.\nWhen status is \"completed\", the result field contains predictions.\n\n**Status values:**\n- `pending`: Job queued, not yet started\n- `processing`: Job running, check progress_current/progress_total\n- `completed`: Job finished, result contains predictions\n- `failed`: Job failed, check error_message",
+        "operationId": "get_job_status_api_v1_jobs__job_id__get",
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobStatusResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Health Check",
+        "description": "Health check endpoint for load balancers and monitoring.",
+        "operationId": "health_check_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Root",
+        "description": "API information and documentation links.",
+        "operationId": "root__get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Body_infer_image_api_v1_infer__model_slug__post": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "format": "binary",
+            "title": "File"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file"
+        ],
+        "title": "Body_infer_image_api_v1_infer__model_slug__post"
+      },
+      "Body_submit_video_job_api_v1_infer__model_slug__video_post": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "format": "binary",
+            "title": "File"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file"
+        ],
+        "title": "Body_submit_video_job_api_v1_infer__model_slug__video_post"
+      },
+      "Body_infer_batch_api_v1_infer__model_slug__batch_post": {
+        "properties": {
+          "files": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "binary"
+            },
+            "title": "Files",
+            "description": "Multiple image files (max 100, 10MB each)"
+          }
+        },
+        "type": "object",
+        "required": [
+          "files"
+        ],
+        "title": "Body_infer_batch_api_v1_infer__model_slug__batch_post"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "ImageInferenceResponse": {
+        "properties": {
+          "model": {
+            "type": "string",
+            "title": "Model",
+            "description": "The model slug used for inference"
+          },
+          "model_type": {
+            "type": "string",
+            "title": "Model Type",
+            "description": "Pipeline type: 'detection' (YOLO) or 'classification' (SAM3 + Classifier)",
+            "enum": [
+              "detection",
+              "classification"
+            ]
+          },
+          "predictions": {
+            "items": {
+              "$ref": "#/components/schemas/Prediction"
+            },
+            "type": "array",
+            "title": "Predictions"
+          },
+          "image_width": {
+            "type": "integer",
+            "title": "Image Width"
+          },
+          "image_height": {
+            "type": "integer",
+            "title": "Image Height"
+          },
+          "inference_time_ms": {
+            "type": "integer",
+            "title": "Inference Time Ms"
+          },
+          "request_id": {
+            "type": "string",
+            "title": "Request Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "model",
+          "model_type",
+          "predictions",
+          "image_width",
+          "image_height",
+          "inference_time_ms",
+          "request_id"
+        ],
+        "title": "ImageInferenceResponse",
+        "description": "Response for synchronous image inference."
+      },
+      "BatchInferenceResponse": {
+        "properties": {
+          "model": {
+            "type": "string",
+            "title": "Model"
+          },
+          "model_type": {
+            "type": "string",
+            "title": "Model Type",
+            "description": "Pipeline type: 'detection' or 'classification'",
+            "enum": [
+              "detection",
+              "classification"
+            ]
+          },
+          "results": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ImageResult"
+            },
+            "title": "Results"
+          },
+          "total_images": {
+            "type": "integer",
+            "title": "Total Images"
+          },
+          "total_predictions": {
+            "type": "integer",
+            "title": "Total Predictions"
+          },
+          "inference_time_ms": {
+            "type": "integer",
+            "title": "Inference Time Ms"
+          },
+          "request_id": {
+            "type": "string",
+            "title": "Request Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "model",
+          "model_type",
+          "results",
+          "total_images",
+          "total_predictions",
+          "inference_time_ms",
+          "request_id"
+        ],
+        "title": "BatchInferenceResponse",
+        "description": "Response for batch image inference."
+      },
+      "ImageResult": {
+        "properties": {
+          "index": {
+            "type": "integer",
+            "title": "Index",
+            "description": "Position in the input array (0-indexed)"
+          },
+          "success": {
+            "type": "boolean",
+            "title": "Success",
+            "default": true
+          },
+          "predictions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Prediction"
+            },
+            "title": "Predictions"
+          },
+          "image_width": {
+            "type": "integer",
+            "title": "Image Width"
+          },
+          "image_height": {
+            "type": "integer",
+            "title": "Image Height"
+          },
+          "error": {
+            "type": "string",
+            "title": "Error",
+            "nullable": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "index",
+          "predictions"
+        ],
+        "title": "ImageResult",
+        "description": "Result for a single image in batch inference."
+      },
+      "JobStatusResponse": {
+        "properties": {
+          "job_id": {
+            "type": "string",
+            "title": "Job Id"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "description": "Job status: pending, processing, completed, or failed",
+            "enum": [
+              "pending",
+              "processing",
+              "completed",
+              "failed"
+            ]
+          },
+          "progress": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Progress",
+            "description": "Progress percentage (0-100)"
+          },
+          "progress_current": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Progress Current",
+            "description": "Current frame being processed"
+          },
+          "progress_total": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Progress Total",
+            "description": "Total frames to process"
+          },
+          "frames_processed": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Frames Processed"
+          },
+          "total_frames": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Frames"
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message",
+            "description": "Error details if status is 'failed'"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/VideoJobResult"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result",
+            "description": "Full results when status is 'completed'"
+          }
+        },
+        "type": "object",
+        "required": [
+          "job_id",
+          "status"
+        ],
+        "title": "JobStatusResponse",
+        "description": "Response for job status query."
+      },
+      "VideoJobResult": {
+        "properties": {
+          "frame_results": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FrameResult"
+            },
+            "title": "Frame Results",
+            "description": "Per-frame predictions"
+          },
+          "processed_frames": {
+            "type": "integer",
+            "title": "Processed Frames"
+          },
+          "total_predictions": {
+            "type": "integer",
+            "title": "Total Predictions"
+          },
+          "unique_tracks": {
+            "type": "integer",
+            "title": "Unique Tracks",
+            "description": "Number of unique objects tracked (classification models only)"
+          },
+          "classified_tracks": {
+            "type": "integer",
+            "title": "Classified Tracks",
+            "description": "Number of tracks successfully classified"
+          },
+          "fps": {
+            "type": "number",
+            "title": "FPS",
+            "description": "Video frame rate"
+          },
+          "video_width": {
+            "type": "integer",
+            "title": "Video Width"
+          },
+          "video_height": {
+            "type": "integer",
+            "title": "Video Height"
+          }
+        },
+        "type": "object",
+        "required": [
+          "frame_results",
+          "processed_frames",
+          "total_predictions",
+          "fps"
+        ],
+        "title": "VideoJobResult",
+        "description": "Complete video inference results."
+      },
+      "FrameResult": {
+        "properties": {
+          "frame_number": {
+            "type": "integer",
+            "title": "Frame Number"
+          },
+          "timestamp": {
+            "type": "number",
+            "title": "Timestamp",
+            "description": "Time in seconds from video start"
+          },
+          "predictions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VideoPrediction"
+            },
+            "title": "Predictions"
+          }
+        },
+        "type": "object",
+        "required": [
+          "frame_number",
+          "timestamp",
+          "predictions"
+        ],
+        "title": "FrameResult",
+        "description": "Predictions for a single video frame."
+      },
+      "Prediction": {
+        "properties": {
+          "class_name": {
+            "type": "string",
+            "title": "Class Name"
+          },
+          "class_id": {
+            "type": "integer",
+            "title": "Class Id"
+          },
+          "confidence": {
+            "type": "number",
+            "title": "Confidence"
+          },
+          "box": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "Box",
+            "description": "Bounding box [x1, y1, x2, y2] in normalized 0-1 coordinates"
+          },
+          "box_format": {
+            "type": "string",
+            "title": "Box Format",
+            "default": "xyxy_normalized"
+          },
+          "mask_polygon": {
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  }
+                }
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mask Polygon",
+            "description": "Segmentation polygon as [[x,y], ...] in normalized 0-1 coordinates (hybrid models only)"
+          }
+        },
+        "type": "object",
+        "required": [
+          "class_name",
+          "class_id",
+          "confidence",
+          "box"
+        ],
+        "title": "Prediction",
+        "description": "Single detection/classification prediction."
+      },
+      "VideoPrediction": {
+        "properties": {
+          "class_name": {
+            "type": "string",
+            "title": "Class Name"
+          },
+          "class_id": {
+            "type": "integer",
+            "title": "Class Id"
+          },
+          "confidence": {
+            "type": "number",
+            "title": "Confidence"
+          },
+          "box": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "Box",
+            "description": "Bounding box [x1, y1, x2, y2] in normalized 0-1 coordinates"
+          },
+          "track_id": {
+            "type": "integer",
+            "title": "Track Id",
+            "description": "Unique identifier for tracked objects across frames (classification models only)"
+          },
+          "mask_polygon": {
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  }
+                }
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mask Polygon",
+            "description": "Segmentation polygon as [[x,y], ...] in normalized 0-1 coordinates (classification models only)"
+          }
+        },
+        "type": "object",
+        "required": [
+          "class_name",
+          "class_id",
+          "confidence",
+          "box"
+        ],
+        "title": "VideoPrediction",
+        "description": "Video prediction with optional tracking ID."
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      },
+      "VideoJobResponse": {
+        "properties": {
+          "job_id": {
+            "type": "string",
+            "title": "Job Id"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "job_id",
+          "status",
+          "message"
+        ],
+        "title": "VideoJobResponse",
+        "description": "Response for async video job submission."
+      }
+    },
+    "securitySchemes": {
+      "APIKeyHeader": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "Authorization",
+        "description": "API key with 'Bearer ' prefix, e.g., 'Bearer safari_xxxx...'"
+      }
+    }
+  }
+}

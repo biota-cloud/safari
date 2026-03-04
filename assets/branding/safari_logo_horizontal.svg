@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  SAFARI Logo — SVG Recreation (Placeholder)
+  
+  Recreated from low-resolution raster sources provided by Biota.
+  This is a faithful geometric approximation for development use.
+  Replace with official vector assets when available from Biota.
+  
+  Design elements:
+  - Outer brackets [ ] — rounded corners, thin stroke
+  - Green dot (●) — #6BBF59 (leaf green)
+  - Letterforms S A F A R I — custom geometric sans, A's have no crossbar
+  - Wide letter-spacing (~0.35em)
+  
+  Variants generated:
+  - safari_logo_horizontal.svg (this file — for navbar, 160×40 proportion)
+  - favicon can be derived by cropping to the [●] mark only
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 80" width="400" height="80">
+  <defs>
+    <style>
+      .bracket { fill: none; stroke: currentColor; stroke-width: 3.5; stroke-linecap: round; stroke-linejoin: round; }
+      .dot { fill: #6BBF59; }
+      .letter { fill: currentColor; font-family: 'Inter', 'Helvetica Neue', Arial, sans-serif; font-weight: 300; font-size: 38px; letter-spacing: 0.35em; }
+    </style>
+  </defs>
+  
+  <!-- Left bracket [ -->
+  <path class="bracket" d="M 18 12 L 8 12 L 8 68 L 18 68" />
+  
+  <!-- Green dot ● -->
+  <circle class="dot" cx="38" cy="43" r="8" />
+  
+  <!-- SAFARI text — using Inter Light with wide spacing -->
+  <!-- Note: The real logo uses a custom typeface where A's have no crossbar (like Λ).
+       For true fidelity, this should be converted to outlines from the official font.
+       This placeholder uses Inter which renders standard A's. -->
+  <text class="letter" x="68" y="55">S A F A R I</text>
+  
+  <!-- Right bracket ] -->
+  <path class="bracket" d="M 382 12 L 392 12 L 392 68 L 382 68" />
+</svg>

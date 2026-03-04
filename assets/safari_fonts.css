@@ -1,0 +1,46 @@
+/* SAFARI Typography — Poppins (rounded geometric sans-serif) */
+
+/* Import Google Fonts — Poppins with all needed weights */
+@import url('https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&display=swap');
+
+/* Apply Poppins globally as override */
+body,
+html {
+    font-family: 'Poppins', system-ui, -apple-system, sans-serif !important;
+}
+
+/* Radix Heading component */
+.rt-Heading {
+    font-family: 'Poppins', system-ui, -apple-system, sans-serif !important;
+}
+
+/* All heading levels */
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+    font-family: 'Poppins', system-ui, -apple-system, sans-serif !important;
+}
+
+/* Radix Text and other components */
+.rt-Text,
+.rt-Button,
+.rt-Badge,
+.rt-Card {
+    font-family: 'Poppins', system-ui, -apple-system, sans-serif !important;
+}
+
+/* Lighter heading weights — matches demo's elegant style */
+.rt-Heading {
+    font-weight: 500 !important;
+}
+
+/* Keep page-level titles slightly heavier */
+h1.rt-Heading,
+.rt-Heading[data-size="7"],
+.rt-Heading[data-size="8"],
+.rt-Heading[data-size="9"] {
+    font-weight: 600 !important;
+}
