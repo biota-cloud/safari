@@ -20,20 +20,8 @@ LOGIN_BORDER = styles.BORDER               # Input borders
 LOGIN_ERROR_BG = f"{styles.ERROR}08"                 # Error banner bg (light red)
 
 
-class LoginFormState(rx.State):
-    """Local state for the login form."""
-    email: str = ""
-    password: str = ""
-    remember_me: bool = True
-
-    def set_email(self, value: str):
-        self.email = value
-
-    def set_password(self, value: str):
-        self.password = value
-
-    def set_remember_me(self, value: bool):
-        self.remember_me = value
+# No LoginFormState needed — form uses uncontrolled inputs for zero-lag typing.
+# Values are read from form_data on submit only.
 
 
 def safari_login_logo() -> rx.Component:
@@ -152,8 +140,6 @@ def login_form_panel() -> rx.Component:
                             placeholder="Email",
                             type="email",
                             name="email",
-                            value=LoginFormState.email,
-                            on_change=LoginFormState.set_email,
                             style={
                                 "width": "100%",
                                 "padding": "14px 16px",
@@ -184,8 +170,6 @@ def login_form_panel() -> rx.Component:
                             placeholder="Password",
                             type="password",
                             name="password",
-                            value=LoginFormState.password,
-                            on_change=LoginFormState.set_password,
                             style={
                                 "width": "100%",
                                 "padding": "14px 16px",
@@ -282,10 +266,11 @@ def login_form_panel() -> rx.Component:
                     width="100%",
                 ),
                 on_submit=lambda form_data: AuthState.login(
-                    LoginFormState.email,
-                    LoginFormState.password,
-                    LoginFormState.remember_me
+                    form_data.get("email", ""),
+                    form_data.get("password", ""),
+                    True,  # Always remember me
                 ),
+                reset_on_submit=False,
                 width="100%",
             ),
 
