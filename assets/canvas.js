@@ -2146,6 +2146,64 @@
         console.log('[PerfOpt] JS annotation cache cleared');
     };
 
+    // ── JS-SIDE SLIDER SEEK (Phase 2 perf optimization) ──
+    // Pointer events on the slider → seekToFrame directly in JS.
+    // Eliminates ALL WS response traffic during slider drag.
+    let _sliderDragging = false;
+
+    function _initSliderDragSeek() {
+        const container = document.getElementById('video-timeline-slider');
+        if (!container || container.dataset.seekBound) return;
+        container.dataset.seekBound = 'true';
+
+        // Find the actual Radix slider track (the span with role="slider" is the thumb)
+        function getTrackBounds() {
+            // The slider track is inset by 6px on each side (for thumb alignment)
+            const rect = container.getBoundingClientRect();
+            return { left: rect.left + 6, right: rect.right - 6, width: rect.width - 12 };
+        }
+
+        function getTotalFrames() {
+            if (sourceVideo && videoFps > 0) {
+                return Math.floor(sourceVideo.duration * videoFps);
+            }
+            return 0;
+        }
+
+        function seekFromPointer(e) {
+            const bounds = getTrackBounds();
+            const totalFrames = getTotalFrames();
+            if (totalFrames <= 0 || bounds.width <= 0) return;
+            const ratio = Math.max(0, Math.min(1, (e.clientX - bounds.left) / bounds.width));
+            const frame = Math.round(ratio * (totalFrames - 1));
+            window.seekToFrame(frame, videoFps);
+        }
+
+        container.addEventListener('pointerdown', function (e) {
+            _sliderDragging = true;
+            seekFromPointer(e);
+        });
+
+        document.addEventListener('pointermove', function (e) {
+            if (!_sliderDragging) return;
+            seekFromPointer(e);
+        });
+
+        document.addEventListener('pointerup', function () {
+            _sliderDragging = false;
+        });
+
+        console.log('[PerfOpt] Slider drag seek listener initialized');
+    }
+
+    // Re-try init periodically until the slider element exists
+    let _sliderInitInterval = setInterval(function () {
+        if (document.getElementById('video-timeline-slider')) {
+            _initSliderDragSeek();
+            clearInterval(_sliderInitInterval);
+        }
+    }, 500);
+
     // Video cache for preloading adjacent videos
     const videoCache = {
         elements: new Map(),  // video_id -> {video: VideoElement, url: string, ready: bool}

@@ -1348,17 +1348,16 @@ class VideoLabelingState(rx.State):
             return self.seek_to_frame(frame)
     
     def handle_slider_drag(self, value: list):
-        """Handle slider dragging — lightweight, just update frame + seek in JS.
+        """Handle slider dragging — state update only, no JS call.
         
-        PERF OPTIMIZATION: No annotation lookup or renderAnnotations callback.
-        JS cache handles annotation rendering inside _executeSeek().
+        PERF: Only updates current_frame/current_timestamp for the controlled
+        Radix slider component. Video seeking is handled entirely in JS via
+        pointer event listeners on the slider (zero WS response traffic).
         """
         if value and len(value) > 0:
             frame = int(value[0])
             self.current_frame = frame
             self.current_timestamp = frame / self.fps if self.fps > 0 else 0
-            # Single JS call — annotations render from JS cache in _executeSeek
-            return rx.call_script(f"window.seekToFrame && window.seekToFrame({frame}, {self.fps})")
             
     def handle_video_loading(self, status: str):
         """Handle video loading status updates from JS.

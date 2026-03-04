@@ -315,6 +315,7 @@ def video_controls() -> rx.Component:
             position="relative",
             width="100%",
             padding_top="14px",  # Space for markers
+            id="video-timeline-slider",
         ),
         # Control buttons
         rx.hstack(
