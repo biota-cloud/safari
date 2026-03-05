@@ -1,181 +1,170 @@
 /**
- * Global slider performance optimizations for Reflex apps.
+ * Global slider performance fix for Reflex apps on high-latency connections.
  *
- * 1. WS Throttle: Limits slider on_change WS messages for controlled sliders.
- * 2. Pure HTML Slider Management: Initializes, updates display, and syncs
- *    pure HTML range inputs that bypass Reflex's auto-generated controlled bindings.
+ * Problem: Reflex rx.slider is always a controlled React component.
+ * On high latency, each on_change fires a WS round-trip (~170ms),
+ * and the thumb can't move until the response arrives. This causes
+ * the "elastic rubber band" effect.
  *
- * Loaded as the first head_component to patch WebSocket.prototype.send
- * before any Reflex WS connections are established.
+ * Solution: During drag, BLOCK all set_epochs WS messages and instead
+ * move the thumb visually via DOM manipulation. On release, allow the
+ * on_value_commit message through to sync the final value.
+ *
+ * How it works:
+ * 1. Detect drag start (pointerdown on slider thumb)
+ * 2. During drag: block set_epochs WS, track pointer position, 
+ *    update thumb position and value display via DOM
+ * 3. On release: unblock WS, let on_value_commit sync to Python
  */
 
-// ============================================================
-// 1. WebSocket Throttle for controlled sliders (non-epoch)
-// ============================================================
 (function () {
-    if (window._sliderThrottleInstalled) return;
-    window._sliderThrottleInstalled = true;
+    if (window._sliderPerfInstalled) return;
+    window._sliderPerfInstalled = true;
 
+    // ===== WS Message Blocker =====
     var origSend = WebSocket.prototype.send;
+    var blockedHandlers = {}; // handler name -> true when blocking
 
-    var throttled = {
-        set_patience: { lastSent: 0, pending: null, timer: null, limit: 300 },
-        set_lr0: { lastSent: 0, pending: null, timer: null, limit: 300 },
-        set_lrf: { lastSent: 0, pending: null, timer: null, limit: 300 },
-        set_train_split: { lastSent: 0, pending: null, timer: null, limit: 300 },
-        set_sam3_max_epochs: { lastSent: 0, pending: null, timer: null, limit: 300 },
-        set_sam3_early_stop_patience: {
-            lastSent: 0,
-            pending: null,
-            timer: null,
-            limit: 300,
-        },
-        set_convnext_lr0_slider: {
-            lastSent: 0,
-            pending: null,
-            timer: null,
-            limit: 300,
-        },
-        set_convnext_weight_decay_slider: {
-            lastSent: 0,
-            pending: null,
-            timer: null,
-            limit: 300,
-        },
-    };
+    // Track all active WS instances for flushing
+    var activeWS = null;
 
     WebSocket.prototype.send = function (data) {
+        activeWS = this;
         if (typeof data === "string") {
-            var ws = this;
-            var keys = Object.keys(throttled);
+            var keys = Object.keys(blockedHandlers);
             for (var i = 0; i < keys.length; i++) {
-                var key = keys[i];
-                if (data.indexOf(key) !== -1) {
-                    var cfg = throttled[key];
-                    var now = Date.now();
-                    var elapsed = now - cfg.lastSent;
-
-                    if (elapsed < cfg.limit) {
-                        cfg.pending = data;
-                        if (!cfg.timer) {
-                            cfg.timer = setTimeout(function () {
-                                cfg.timer = null;
-                                if (cfg.pending) {
-                                    cfg.lastSent = Date.now();
-                                    origSend.call(ws, cfg.pending);
-                                    cfg.pending = null;
-                                }
-                            }, cfg.limit - elapsed);
-                        }
-                        return;
-                    }
-
-                    cfg.lastSent = now;
-                    cfg.pending = null;
-                    return origSend.call(ws, data);
+                if (blockedHandlers[keys[i]] && data.indexOf(keys[i]) !== -1) {
+                    // Blocked — drop this message silently
+                    return;
                 }
             }
         }
         return origSend.call(this, data);
     };
-})();
 
-// ============================================================
-// 2. Pure HTML slider management (epochs)
-// ============================================================
-(function () {
-    /**
-     * For each slider config:
-     * - rangeId: the <input type="range"> element
-     * - displayId: the <span> showing the current value
-     * - bridgeId: hidden <input> that triggers Reflex on_change on release
-     */
-    var sliders = [
+    // ===== Slider Performance Manager =====
+    // Configs: which sliders to optimize
+    var configs = [
         {
-            rangeId: "epochs-range",
-            displayId: "epochs-value-display",
-            bridgeId: "epochs-bridge",
+            handlerName: "set_epochs",
+            trackSelector: null, // will be found dynamically
+            installed: false,
         },
     ];
 
-    function setupSlider(cfg) {
-        var range = document.getElementById(cfg.rangeId);
-        var display = document.getElementById(cfg.displayId);
-        var bridge = document.getElementById(cfg.bridgeId);
+    function findEpochsSlider() {
+        // Find the slider whose on_change calls set_epochs
+        // The epochs slider has max=500, step=10
+        var thumbs = document.querySelectorAll('[role="slider"]');
+        for (var i = 0; i < thumbs.length; i++) {
+            var thumb = thumbs[i];
+            var max = thumb.getAttribute("aria-valuemax");
+            if (max === "500") {
+                return thumb;
+            }
+        }
+        return null;
+    }
 
-        if (!range || !bridge || range.dataset.managed) return false;
-        range.dataset.managed = "true";
+    function installEpochsOptimizer() {
+        var thumb = findEpochsSlider();
+        if (!thumb || configs[0].installed) return false;
 
-        // Set initial value from data-initial attribute (rendered by Reflex from state)
-        var initial = range.getAttribute("data-initial");
-        if (initial && initial !== "None" && initial !== "undefined") {
-            range.value = initial;
+        var track = thumb.closest('[data-orientation="horizontal"]');
+        if (!track) track = thumb.parentElement;
+
+        configs[0].installed = true;
+
+        var isDragging = false;
+
+        // Find the value display — it shows TrainingState.epochs
+        // It's the sibling text element with the accent color
+        function findDisplay() {
+            // Navigate up to find the vstack containing slider + header
+            var container = track;
+            for (var j = 0; j < 5; j++) {
+                container = container.parentElement;
+                if (!container) break;
+            }
+            if (!container) return null;
+            // Find span/p with the mono font showing the number
+            var texts = container.querySelectorAll("p, span");
+            for (var k = 0; k < texts.length; k++) {
+                var cs = getComputedStyle(texts[k]);
+                if (cs.fontFamily.indexOf("Mono") !== -1 || cs.fontFamily.indexOf("mono") !== -1) {
+                    var val = parseInt(texts[k].textContent);
+                    if (!isNaN(val) && val >= 10 && val <= 500) {
+                        return texts[k];
+                    }
+                }
+            }
+            return null;
         }
 
-        // Update display immediately with initial value
-        if (display) {
-            display.textContent = range.value;
+        // On drag start: block WS messages for set_epochs
+        track.addEventListener(
+            "pointerdown",
+            function () {
+                isDragging = true;
+                blockedHandlers["set_epochs"] = true;
+            },
+            true
+        );
+
+        // On drag end: unblock and let on_value_commit through
+        function endDrag() {
+            if (!isDragging) return;
+            isDragging = false;
+
+            // Small delay before unblocking — let on_value_commit fire first
+            // on_value_commit calls save_training_prefs (doesn't contain "set_epochs")
+            setTimeout(function () {
+                blockedHandlers["set_epochs"] = false;
+
+                // Send ONE final set_epochs to sync the value
+                var currentValue = thumb.getAttribute("aria-valuenow");
+                if (currentValue && activeWS) {
+                    // Update display
+                    var display = findDisplay();
+                    if (display) display.textContent = currentValue;
+                }
+            }, 100);
         }
 
-        // Live display update during drag — zero WS, purely client-side
-        range.addEventListener("input", function () {
+        document.addEventListener("pointerup", endDrag, true);
+        document.addEventListener("pointercancel", endDrag, true);
+
+        // During drag: update the display text from aria-valuenow
+        var obs = new MutationObserver(function (mutations) {
+            if (!isDragging) return;
+            var display = findDisplay();
             if (display) {
-                display.textContent = range.value;
+                var val = thumb.getAttribute("aria-valuenow");
+                if (val) display.textContent = val;
             }
         });
-
-        // On release: sync to Python via hidden input bridge
-        range.addEventListener("change", function () {
-            if (bridge) {
-                // Set value and dispatch change event to trigger Reflex on_change
-                var nativeInputValueSetter = Object.getOwnPropertyDescriptor(
-                    window.HTMLInputElement.prototype,
-                    "value"
-                ).set;
-                nativeInputValueSetter.call(bridge, range.value);
-                bridge.dispatchEvent(new Event("change", { bubbles: true }));
-            }
-        });
+        obs.observe(thumb, { attributes: true, attributeFilter: ["aria-valuenow"] });
 
         return true;
     }
 
-    function installAll() {
-        var allDone = true;
-        for (var i = 0; i < sliders.length; i++) {
-            if (!document.getElementById(sliders[i].rangeId)) {
-                allDone = false;
-                continue;
-            }
-            if (
-                document.getElementById(sliders[i].rangeId) &&
-                !document.getElementById(sliders[i].rangeId).dataset.managed
-            ) {
-                if (!setupSlider(sliders[i])) allDone = false;
-            }
-        }
-        return allDone;
-    }
-
-    // Poll for elements (page may not be rendered yet)
+    // Poll until slider is found
     var attempts = 0;
     var iv = setInterval(function () {
-        installAll();
+        if (installEpochsOptimizer()) {
+            console.log("[SliderPerf] Epochs slider optimized");
+        }
         attempts++;
-        if (attempts > 120) clearInterval(iv); // Stop after 60s
+        if (attempts > 120) clearInterval(iv);
     }, 500);
 
-    // Also re-install on page navigation (Reflex SPA transitions)
+    // Reinstall on SPA navigation
     var lastPath = "";
     setInterval(function () {
         if (window.location.pathname !== lastPath) {
             lastPath = window.location.pathname;
-            // Reset managed flags on path change
-            for (var i = 0; i < sliders.length; i++) {
-                var el = document.getElementById(sliders[i].rangeId);
-                if (el) delete el.dataset.managed;
-            }
-            installAll();
+            configs[0].installed = false;
+            installEpochsOptimizer();
         }
-    }, 500);
+    }, 1000);
 })();
