@@ -2502,7 +2502,6 @@ def dashboard_content() -> rx.Component:
                         unified_run_config_card(),
                         spacing="3",
                         width="100%",
-                        style={"padding_right": "16px"},  # Prevent content touching scrollbar edge
                     ),
                     type="hover",
                     scrollbars="vertical",
@@ -2510,7 +2509,7 @@ def dashboard_content() -> rx.Component:
                         "width": "400px",
                         "min_width": "400px",
                         "height": "100%",
-                        "overflow_x": "hidden",  # Prevent right-side truncation
+                        "padding_right": "14px",  # Room for scrollbar overlay + card border-radius
                     },
                 ),
                 
