@@ -574,33 +574,9 @@ def configuration_card() -> rx.Component:
         # Training Mode Selector (Detection / Classification / SAM3)
         rx.box(
             rx.segmented_control.root(
-                rx.segmented_control.item(
-                    rx.hstack(
-                        rx.icon("target", size=12),
-                        rx.text("Detection", size="1"),
-                        spacing="1",
-                        align="center",
-                    ),
-                    value="detection",
-                ),
-                rx.segmented_control.item(
-                    rx.hstack(
-                        rx.icon("tags", size=12),
-                        rx.text("Classification", size="1"),
-                        spacing="1",
-                        align="center",
-                    ),
-                    value="classification",
-                ),
-                rx.segmented_control.item(
-                    rx.hstack(
-                        rx.icon("sparkles", size=12),
-                        rx.text("SAM3", size="1"),
-                        spacing="1",
-                        align="center",
-                    ),
-                    value="sam3_finetune",
-                ),
+                rx.segmented_control.item("Detection", value="detection"),
+                rx.segmented_control.item("Classification", value="classification"),
+                rx.segmented_control.item("SAM3", value="sam3_finetune"),
                 value=TrainingState.training_mode,
                 on_change=TrainingState.set_training_mode,
                 size="1",
@@ -2067,33 +2043,9 @@ def unified_run_config_card() -> rx.Component:
                         # Mode toggle (wrapped in box — style prop on segmented_control.root doesn't render)
                         rx.box(
                             rx.segmented_control.root(
-                                rx.segmented_control.item(
-                                    rx.hstack(
-                                        rx.icon("target", size=12),
-                                        rx.text("Detection", size="1"),
-                                        spacing="1",
-                                        align="center",
-                                    ),
-                                    value="detection",
-                                ),
-                                rx.segmented_control.item(
-                                    rx.hstack(
-                                        rx.icon("tags", size=12),
-                                        rx.text("Classification", size="1"),
-                                        spacing="1",
-                                        align="center",
-                                    ),
-                                    value="classification",
-                                ),
-                                rx.segmented_control.item(
-                                    rx.hstack(
-                                        rx.icon("sparkles", size=12),
-                                        rx.text("SAM3", size="1"),
-                                        spacing="1",
-                                        align="center",
-                                    ),
-                                    value="sam3_finetune",
-                                ),
+                                rx.segmented_control.item("Detection", value="detection"),
+                                rx.segmented_control.item("Classification", value="classification"),
+                                rx.segmented_control.item("SAM3", value="sam3_finetune"),
                                 value=TrainingState.training_mode,
                                 on_change=TrainingState.set_training_mode,
                                 size="1",
@@ -2129,33 +2081,9 @@ def unified_run_config_card() -> rx.Component:
                         # Mode toggle (wrapped in box — style prop on segmented_control.root doesn't render)
                         rx.box(
                             rx.segmented_control.root(
-                                rx.segmented_control.item(
-                                    rx.hstack(
-                                        rx.icon("target", size=12),
-                                        rx.text("Detection", size="1"),
-                                        spacing="1",
-                                        align="center",
-                                    ),
-                                    value="detection",
-                                ),
-                                rx.segmented_control.item(
-                                    rx.hstack(
-                                        rx.icon("tags", size=12),
-                                        rx.text("Classification", size="1"),
-                                        spacing="1",
-                                        align="center",
-                                    ),
-                                    value="classification",
-                                ),
-                                rx.segmented_control.item(
-                                    rx.hstack(
-                                        rx.icon("sparkles", size=12),
-                                        rx.text("SAM3", size="1"),
-                                        spacing="1",
-                                        align="center",
-                                    ),
-                                    value="sam3_finetune",
-                                ),
+                                rx.segmented_control.item("Detection", value="detection"),
+                                rx.segmented_control.item("Classification", value="classification"),
+                                rx.segmented_control.item("SAM3", value="sam3_finetune"),
                                 value=TrainingState.training_mode,
                                 on_change=TrainingState.set_training_mode,
                                 size="1",
