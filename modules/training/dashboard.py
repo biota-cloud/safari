@@ -774,14 +774,6 @@ def configuration_card() -> rx.Component:
                         TrainingState.show_advanced_settings,
                         rx.vstack(
                             # All steppers stacked vertically (SAM3 pattern)
-                            # Patience
-                            numeric_stepper(
-                                label="Patience",
-                                value=TrainingState.patience,
-                                on_blur_handler=TrainingState.set_patience_input,
-                                on_increment=TrainingState.increment_patience,
-                                on_decrement=TrainingState.decrement_patience,
-                            ),
                             # Learning Rate - conditional based on backbone
                             rx.cond(
                                 (TrainingState.training_mode == "classification") & (TrainingState.classifier_backbone == "convnext"),
@@ -2053,15 +2045,24 @@ def unified_run_config_card() -> rx.Component:
                             ),
                             style={"width": "100%", "overflow": "hidden"},
                         ),
-                        # Epochs stepper (hidden for SAM3 which has its own)
+                        # Epochs + Patience (hidden for SAM3 which has its own)
                         rx.cond(
                             TrainingState.training_mode != "sam3_finetune",
-                            numeric_stepper(
-                                label="Epochs",
-                                value=TrainingState.epochs,
-                                on_blur_handler=TrainingState.set_epochs_input,
-                                on_increment=TrainingState.increment_epochs,
-                                on_decrement=TrainingState.decrement_epochs,
+                            rx.fragment(
+                                numeric_stepper(
+                                    label="Epochs",
+                                    value=TrainingState.epochs,
+                                    on_blur_handler=TrainingState.set_epochs_input,
+                                    on_increment=TrainingState.increment_epochs,
+                                    on_decrement=TrainingState.decrement_epochs,
+                                ),
+                                numeric_stepper(
+                                    label="Patience",
+                                    value=TrainingState.patience,
+                                    on_blur_handler=TrainingState.set_patience_input,
+                                    on_increment=TrainingState.increment_patience,
+                                    on_decrement=TrainingState.decrement_patience,
+                                ),
                             ),
                         ),
                         # SAM3 config (shown only for SAM3 mode)
@@ -2091,15 +2092,24 @@ def unified_run_config_card() -> rx.Component:
                             ),
                             style={"width": "100%", "overflow": "hidden"},
                         ),
-                        # Epochs stepper (hidden for SAM3 which has its own)
+                        # Epochs + Patience (hidden for SAM3 which has its own)
                         rx.cond(
                             TrainingState.training_mode != "sam3_finetune",
-                            numeric_stepper(
-                                label="Epochs",
-                                value=TrainingState.epochs,
-                                on_blur_handler=TrainingState.set_epochs_input,
-                                on_increment=TrainingState.increment_epochs,
-                                on_decrement=TrainingState.decrement_epochs,
+                            rx.fragment(
+                                numeric_stepper(
+                                    label="Epochs",
+                                    value=TrainingState.epochs,
+                                    on_blur_handler=TrainingState.set_epochs_input,
+                                    on_increment=TrainingState.increment_epochs,
+                                    on_decrement=TrainingState.decrement_epochs,
+                                ),
+                                numeric_stepper(
+                                    label="Patience",
+                                    value=TrainingState.patience,
+                                    on_blur_handler=TrainingState.set_patience_input,
+                                    on_increment=TrainingState.increment_patience,
+                                    on_decrement=TrainingState.decrement_patience,
+                                ),
                             ),
                         ),
                         # Mode-specific dropdowns in 2-column grid
@@ -2215,14 +2225,6 @@ def unified_run_config_card() -> rx.Component:
                                     style={"margin": "12px 0 8px"},
                                 ),
                                 # All steppers stacked vertically (SAM3 pattern)
-                                # Patience
-                                numeric_stepper(
-                                    label="Patience",
-                                    value=TrainingState.patience,
-                                    on_blur_handler=TrainingState.set_patience_input,
-                                    on_increment=TrainingState.increment_patience,
-                                    on_decrement=TrainingState.decrement_patience,
-                                ),
                                 # Learning Rate - conditional based on backbone
                                 rx.cond(
                                     (TrainingState.training_mode == "classification") & (TrainingState.classifier_backbone == "convnext"),
