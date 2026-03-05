@@ -2064,40 +2064,42 @@ def unified_run_config_card() -> rx.Component:
                     TrainingState.is_model_collapsed,
                     rx.vstack(
                         rx.divider(style={"border_color": styles.BORDER, "margin": "8px 0"}),
-                        # Mode toggle
-                        rx.segmented_control.root(
-                            rx.segmented_control.item(
-                                rx.hstack(
-                                    rx.icon("target", size=12),
-                                    rx.text("Detection", size="1"),
-                                    spacing="1",
-                                    align="center",
+                        # Mode toggle (wrapped in box — style prop on segmented_control.root doesn't render)
+                        rx.box(
+                            rx.segmented_control.root(
+                                rx.segmented_control.item(
+                                    rx.hstack(
+                                        rx.icon("target", size=12),
+                                        rx.text("Detection", size="1"),
+                                        spacing="1",
+                                        align="center",
+                                    ),
+                                    value="detection",
                                 ),
-                                value="detection",
-                            ),
-                            rx.segmented_control.item(
-                                rx.hstack(
-                                    rx.icon("tags", size=12),
-                                    rx.text("Classification", size="1"),
-                                    spacing="1",
-                                    align="center",
+                                rx.segmented_control.item(
+                                    rx.hstack(
+                                        rx.icon("tags", size=12),
+                                        rx.text("Classification", size="1"),
+                                        spacing="1",
+                                        align="center",
+                                    ),
+                                    value="classification",
                                 ),
-                                value="classification",
-                            ),
-                            rx.segmented_control.item(
-                                rx.hstack(
-                                    rx.icon("sparkles", size=12),
-                                    rx.text("SAM3", size="1"),
-                                    spacing="1",
-                                    align="center",
+                                rx.segmented_control.item(
+                                    rx.hstack(
+                                        rx.icon("sparkles", size=12),
+                                        rx.text("SAM3", size="1"),
+                                        spacing="1",
+                                        align="center",
+                                    ),
+                                    value="sam3_finetune",
                                 ),
-                                value="sam3_finetune",
+                                value=TrainingState.training_mode,
+                                on_change=TrainingState.set_training_mode,
+                                size="1",
+                                width="100%",
                             ),
-                            value=TrainingState.training_mode,
-                            on_change=TrainingState.set_training_mode,
-                            size="1",
-                            width="100%",
-                            style={"max_width": "100%", "overflow": "hidden"},
+                            style={"width": "100%", "overflow": "hidden"},
                         ),
                         # Epochs stepper (hidden for SAM3 which has its own)
                         rx.cond(
@@ -2124,40 +2126,42 @@ def unified_run_config_card() -> rx.Component:
                     ~TrainingState.is_model_collapsed,
                     rx.vstack(
                         rx.divider(style={"border_color": styles.BORDER, "margin": "8px 0"}),
-                        # Mode toggle
-                        rx.segmented_control.root(
-                            rx.segmented_control.item(
-                                rx.hstack(
-                                    rx.icon("target", size=12),
-                                    rx.text("Detection", size="1"),
-                                    spacing="1",
-                                    align="center",
+                        # Mode toggle (wrapped in box — style prop on segmented_control.root doesn't render)
+                        rx.box(
+                            rx.segmented_control.root(
+                                rx.segmented_control.item(
+                                    rx.hstack(
+                                        rx.icon("target", size=12),
+                                        rx.text("Detection", size="1"),
+                                        spacing="1",
+                                        align="center",
+                                    ),
+                                    value="detection",
                                 ),
-                                value="detection",
-                            ),
-                            rx.segmented_control.item(
-                                rx.hstack(
-                                    rx.icon("tags", size=12),
-                                    rx.text("Classification", size="1"),
-                                    spacing="1",
-                                    align="center",
+                                rx.segmented_control.item(
+                                    rx.hstack(
+                                        rx.icon("tags", size=12),
+                                        rx.text("Classification", size="1"),
+                                        spacing="1",
+                                        align="center",
+                                    ),
+                                    value="classification",
                                 ),
-                                value="classification",
-                            ),
-                            rx.segmented_control.item(
-                                rx.hstack(
-                                    rx.icon("sparkles", size=12),
-                                    rx.text("SAM3", size="1"),
-                                    spacing="1",
-                                    align="center",
+                                rx.segmented_control.item(
+                                    rx.hstack(
+                                        rx.icon("sparkles", size=12),
+                                        rx.text("SAM3", size="1"),
+                                        spacing="1",
+                                        align="center",
+                                    ),
+                                    value="sam3_finetune",
                                 ),
-                                value="sam3_finetune",
+                                value=TrainingState.training_mode,
+                                on_change=TrainingState.set_training_mode,
+                                size="1",
+                                width="100%",
                             ),
-                            value=TrainingState.training_mode,
-                            on_change=TrainingState.set_training_mode,
-                            size="1",
-                            width="100%",
-                            style={"max_width": "100%", "overflow": "hidden"},
+                            style={"width": "100%", "overflow": "hidden"},
                         ),
                         # Epochs stepper (hidden for SAM3 which has its own)
                         rx.cond(
