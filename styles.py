@@ -41,7 +41,7 @@ PURPLE = "#A855F7"           # ONLY for ML concept: Hybrid/Classification badges
 
 # Text Colors
 TEXT_PRIMARY = "#333333"     # Near-black — headings, important text
-TEXT_SECONDARY = "#888888"   # Warm grey — body text, descriptions
+TEXT_SECONDARY = "#6b6b6b"   # Warm grey — body text, descriptions, form labels
 
 # Code / Terminal — keep dark for readability
 CODE_BG = "#1E1E1E"          # Dark terminal background

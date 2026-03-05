@@ -14,6 +14,7 @@ import reflex as rx
 import styles
 from modules.inference.state import InferenceState
 from components.compute_target_toggle import compute_target_toggle
+from modules.training.dashboard import numeric_stepper
 
 
 # =============================================================================
@@ -717,28 +718,59 @@ def inference_card() -> rx.Component:
             rx.cond(
                 InferenceState.uploaded_file_type == "video",
                 rx.hstack(
-                    rx.text("Time:", size="1", style={"color": styles.TEXT_SECONDARY}),
-                    rx.text(f"{InferenceState.video_start_time:.1f}s", size="1", weight="bold", style={"color": styles.ACCENT}),
-                    rx.slider(
-                        default_value=[InferenceState.video_start_time],
-                        min=0,
-                        max=InferenceState.video_duration,
-                        step=0.1,
-                        on_change=InferenceState.update_video_start_time,
-                        size="1",
-                        style={"flex": "1", "min_width": "60px"},
+                    # Start time — label tight to controls
+                    rx.hstack(
+                        rx.text("Start", size="1", weight="medium", style={"color": styles.TEXT_SECONDARY}),
+                        rx.icon_button(
+                            rx.icon("minus", size=12), size="1", variant="ghost",
+                            on_click=InferenceState.decrement_video_start,
+                            style={"color": styles.TEXT_SECONDARY, "&:hover": {"background": styles.BG_TERTIARY, "color": styles.TEXT_PRIMARY}},
+                        ),
+                        rx.input(
+                            key=InferenceState.video_start_time.to(str),
+                            default_value=InferenceState.video_start_time.to(str),
+                            on_blur=InferenceState.set_video_start_input,
+                            on_key_down=rx.call_script("if (event.key === 'Enter') event.target.blur()"),
+                            size="1",
+                            style={"width": "52px", "text_align": "center", "color": styles.ACCENT, "font_weight": "bold",
+                                   "font_family": styles.FONT_FAMILY_MONO, "background": "transparent",
+                                   "border": f"1px solid {styles.BORDER}", "border_radius": styles.RADIUS_SM},
+                        ),
+                        rx.icon_button(
+                            rx.icon("plus", size=12), size="1", variant="ghost",
+                            on_click=InferenceState.increment_video_start,
+                            style={"color": styles.TEXT_SECONDARY, "&:hover": {"background": styles.BG_TERTIARY, "color": styles.TEXT_PRIMARY}},
+                        ),
+                        spacing="1",
+                        align="center",
                     ),
                     rx.text("→", size="1", style={"color": styles.TEXT_SECONDARY}),
-                    rx.slider(
-                        value=[InferenceState.video_end_time],
-                        min=0,
-                        max=InferenceState.video_duration,
-                        step=0.1,
-                        on_change=InferenceState.update_video_end_time,
-                        size="1",
-                        style={"flex": "1", "min_width": "60px"},
+                    # End time — label tight to controls
+                    rx.hstack(
+                        rx.text("End", size="1", weight="medium", style={"color": styles.TEXT_SECONDARY}),
+                        rx.icon_button(
+                            rx.icon("minus", size=12), size="1", variant="ghost",
+                            on_click=InferenceState.decrement_video_end,
+                            style={"color": styles.TEXT_SECONDARY, "&:hover": {"background": styles.BG_TERTIARY, "color": styles.TEXT_PRIMARY}},
+                        ),
+                        rx.input(
+                            key=InferenceState.video_end_time.to(str),
+                            default_value=InferenceState.video_end_time.to(str),
+                            on_blur=InferenceState.set_video_end_input,
+                            on_key_down=rx.call_script("if (event.key === 'Enter') event.target.blur()"),
+                            size="1",
+                            style={"width": "52px", "text_align": "center", "color": styles.ACCENT, "font_weight": "bold",
+                                   "font_family": styles.FONT_FAMILY_MONO, "background": "transparent",
+                                   "border": f"1px solid {styles.BORDER}", "border_radius": styles.RADIUS_SM},
+                        ),
+                        rx.icon_button(
+                            rx.icon("plus", size=12), size="1", variant="ghost",
+                            on_click=InferenceState.increment_video_end,
+                            style={"color": styles.TEXT_SECONDARY, "&:hover": {"background": styles.BG_TERTIARY, "color": styles.TEXT_PRIMARY}},
+                        ),
+                        spacing="1",
+                        align="center",
                     ),
-                    rx.text(f"{InferenceState.video_end_time:.1f}s", size="1", weight="bold", style={"color": styles.ACCENT}),
                     rx.divider(orientation="vertical", style={"height": "16px"}),
                     rx.text("Skip:", size="1", style={"color": styles.TEXT_SECONDARY}),
                     rx.switch(
@@ -838,28 +870,14 @@ def inference_card() -> rx.Component:
                                 width="100%",
                             ),
                             
-                            # Classifier confidence slider
-                            rx.hstack(
-                                rx.text("Species Conf.", size="1", style={"color": styles.TEXT_SECONDARY, "white_space": "nowrap"}),
-                                rx.slider(
-                                    value=[InferenceState.classifier_confidence],
-                                    min=0.1,
-                                    max=1.0,
-                                    step=0.05,
-                                    on_change=InferenceState.set_classifier_confidence,
-                                    on_value_commit=InferenceState.save_classifier_confidence_pref,
-                                    size="1",
-                                    style={"flex": "1"},
-                                ),
-                                rx.text(
-                                    (InferenceState.classifier_confidence * 100).to(int).to_string() + "%",
-                                    size="1",
-                                    weight="bold",
-                                    style={"color": styles.ACCENT, "min_width": "32px"},
-                                ),
-                                spacing="2",
-                                align="center",
-                                width="100%",
+                            # Classifier confidence stepper
+                            numeric_stepper(
+                                label="Species Conf.",
+                                value=InferenceState.classifier_confidence,
+                                on_blur_handler=InferenceState.set_classifier_confidence_input,
+                                on_increment=InferenceState.increment_classifier_confidence,
+                                on_decrement=InferenceState.decrement_classifier_confidence,
+                                display_width="52px",
                             ),
                             
                             # Classify Top-K input
@@ -977,37 +995,15 @@ def inference_card() -> rx.Component:
             
             # Bottom row: Confidence + Actions
             rx.hstack(
-                # Confidence slider - use box with min-width to prevent squashing
+                # Confidence stepper
                 rx.box(
-                    rx.hstack(
-                        # Dynamic label: "Detection Conf" in hybrid mode, "Confidence" otherwise
-                        rx.text(
-                            rx.cond(InferenceState.is_hybrid_mode, "SAM3 Conf", "Confidence"),
-                            size="1",
-                            style={"color": styles.TEXT_SECONDARY, "white_space": "nowrap"},
-                        ),
-                        rx.box(
-                            rx.slider(
-                                value=[InferenceState.confidence_threshold],
-                                min=0,
-                                max=1,
-                                step=0.01,
-                                on_change=InferenceState.update_confidence_threshold,
-                                on_value_commit=InferenceState.save_confidence_pref,
-                                size="1",
-                            ),
-                            min_width="100px",
-                            width="100%",
-                        ),
-                        rx.text(
-                            InferenceState.formatted_confidence,
-                            size="1",
-                            weight="bold",
-                            style={"color": styles.ACCENT, "min_width": "32px", "white_space": "nowrap"},
-                        ),
-                        spacing="2",
-                        align="center",
-                        width="100%",
+                    numeric_stepper(
+                        label=rx.cond(InferenceState.is_hybrid_mode, "SAM3 Conf", "Confidence"),
+                        value=InferenceState.confidence_threshold,
+                        on_blur_handler=InferenceState.set_confidence_input,
+                        on_increment=InferenceState.increment_confidence,
+                        on_decrement=InferenceState.decrement_confidence,
+                        display_width="52px",
                     ),
                     min_width="180px",
                     flex="1",
@@ -1240,7 +1236,7 @@ def classification_crops_gallery() -> rx.Component:
                                     variant="outline",
                                 ),
                                 rx.text(
-                                    (crop["confidence"].to(float) * 100).to(int).to(str) + "%",
+                                    round(crop["confidence"].to(float) * 100).to(str) + "%",
                                     size="1",
                                     style={"color": styles.ACCENT},
                                 ),
@@ -1377,7 +1373,7 @@ def preview_modal() -> rx.Component:
                                 InferenceState.preview_predictions,
                                 lambda pred: rx.box(
                                     rx.text(
-                                        pred["class_name"].to(str) + " " + (pred["confidence"].to(float) * 100).to(int).to(str) + "%",
+                                        pred["class_name"].to(str) + " " + round(pred["confidence"].to(float) * 100).to(str) + "%",
                                         size="1",
                                         style={
                                             "color": "#000",
@@ -1498,7 +1494,7 @@ def preview_modal() -> rx.Component:
                                     InferenceState.preview_batch_current_predictions,
                                     lambda pred: rx.box(
                                         rx.text(
-                                            pred["class_name"].to(str) + " " + (pred["confidence"].to(float) * 100).to(int).to(str) + "%",
+                                            pred["class_name"].to(str) + " " + round(pred["confidence"].to(float) * 100).to(str) + "%",
                                             size="1",
                                             style={
                                                 "color": "#000",
@@ -1547,7 +1543,7 @@ def preview_modal() -> rx.Component:
                                 InferenceState.preview_predictions[:10],  # Show first 10
                                 lambda pred: rx.hstack(
                                     rx.badge(pred["class_name"], color_scheme="gray", size="1"),
-                                    rx.text((pred["confidence"].to(float) * 100).to(int).to(str) + "%", size="1", style={"color": styles.ACCENT}),
+                                    rx.text(round(pred["confidence"].to(float) * 100).to(str) + "%", size="1", style={"color": styles.ACCENT}),
                                     spacing="2",
                                 ),
                             ),

@@ -37,6 +37,7 @@ from backend.job_router import (
 )
 from backend.inference_router import dispatch_inference, InferenceConfig
 from app_state import AuthState
+from modules.training.state import _validate_numeric
 
 
 # TypedDict for prediction bounding box (from Modal inference job)
@@ -71,6 +72,57 @@ class ProjectModels(TypedDict):
     project_id: str
     project_name: str
     models: list[ModelInfo]
+
+
+# =============================================================================
+# R2 Media Cache (module-level, shared across sessions)
+# =============================================================================
+import time as _time
+
+_url_cache: dict[str, tuple[str, float]] = {}       # r2_path → (presigned_url, timestamp)
+_download_cache: dict[str, tuple[dict, float]] = {} # r2_path → (parsed_json, timestamp)
+_CACHE_TTL = 50 * 60  # 50 minutes (presigned URLs expire at 60)
+_URL_CACHE_MAX = 50
+_DOWNLOAD_CACHE_MAX = 10
+
+
+def _cached_presigned_url(r2_client, path: str, expires_in: int = 3600) -> str:
+    """Generate presigned URL with cache. Same video across model runs → 1 generation."""
+    now = _time.time()
+    if path in _url_cache:
+        url, ts = _url_cache[path]
+        if now - ts < _CACHE_TTL:
+            print(f"[Cache HIT] URL for {path.split('/')[-1]}")
+            return url
+    # Cache miss or expired
+    url = r2_client.generate_presigned_url(path, expires_in=expires_in)
+    # Evict oldest if at capacity
+    if len(_url_cache) >= _URL_CACHE_MAX:
+        oldest_key = min(_url_cache, key=lambda k: _url_cache[k][1])
+        del _url_cache[oldest_key]
+    _url_cache[path] = (url, now)
+    print(f"[Cache MISS] URL for {path.split('/')[-1]}")
+    return url
+
+
+def _cached_download_json(r2_client, path: str) -> dict:
+    """Download and parse JSON from R2 with cache. Re-opening same result → skip download."""
+    now = _time.time()
+    if path in _download_cache:
+        data, ts = _download_cache[path]
+        if now - ts < _CACHE_TTL:
+            print(f"[Cache HIT] Download for {path.split('/')[-1]}")
+            return data
+    # Cache miss or expired
+    raw = r2_client.download_file(path)
+    data = json.loads(raw.decode('utf-8'))
+    # Evict oldest if at capacity  
+    if len(_download_cache) >= _DOWNLOAD_CACHE_MAX:
+        oldest_key = min(_download_cache, key=lambda k: _download_cache[k][1])
+        del _download_cache[oldest_key]
+    _download_cache[path] = (data, now)
+    print(f"[Cache MISS] Download for {path.split('/')[-1]}")
+    return data
 
 
 # =============================================================================
@@ -473,8 +525,23 @@ class InferenceState(rx.State):
         self.sam3_prompts_input = value
     
     def set_classifier_confidence(self, value: list[float]):
-        """Update classifier confidence from slider."""
+        """Update classifier confidence from slider (legacy)."""
         self.classifier_confidence = value[0]
+    
+    async def set_classifier_confidence_input(self, value: str):
+        """Set classifier confidence from text input."""
+        v = _validate_numeric(value, 0.1, 1.0, 0.05, is_float=True)
+        if v is not None:
+            self.classifier_confidence = v
+            await self.save_classifier_confidence_pref()
+    
+    async def increment_classifier_confidence(self):
+        self.classifier_confidence = round(min(1.0, self.classifier_confidence + 0.05), 2)
+        await self.save_classifier_confidence_pref()
+    
+    async def decrement_classifier_confidence(self):
+        self.classifier_confidence = round(max(0.1, self.classifier_confidence - 0.05), 2)
+        await self.save_classifier_confidence_pref()
     
     async def save_sam3_prompts_pref(self):
         """Save SAM3 prompts preference on blur."""
@@ -568,15 +635,14 @@ class InferenceState(rx.State):
             self.preview_input_type = record.get("input_type", "image")
             self.preview_detection_count = record.get("detection_count", 0)
             
-            # Get presigned URL for input
+            # Get presigned URL for input (cached by r2_path)
             t2 = time.time()
             r2_client = R2Client()
-            self.preview_input_url = r2_client.generate_presigned_url(
-                record.get("input_r2_path", ""),
-                expires_in=3600
+            self.preview_input_url = _cached_presigned_url(
+                r2_client, record.get("input_r2_path", "")
             )
             t3 = time.time()
-            print(f"[Preview Timer] Main presigned URL: {(t3-t2)*1000:.1f}ms")
+            print(f"[Preview Timer] Input URL: {(t3-t2)*1000:.1f}ms")
             
             # For videos, also load labels for preview rendering
             if self.preview_input_type == "video":
@@ -584,8 +650,7 @@ class InferenceState(rx.State):
                 if labels_path:
                     try:
                         t_labels = time.time()
-                        labels_data = r2_client.download_file(labels_path)
-                        labels_json = json.loads(labels_data.decode('utf-8'))
+                        labels_json = _cached_download_json(r2_client, labels_path)
                         
                         # Handle both formats:
                         # - Hybrid: {"predictions_by_frame": {...}, "masks_by_frame": {...}}
@@ -606,7 +671,7 @@ class InferenceState(rx.State):
                                     r2_path = crop.get("r2_path", "")
                                     if r2_path:
                                         try:
-                                            url = r2_client.generate_presigned_url(r2_path, expires_in=3600)
+                                            url = _cached_presigned_url(r2_client, r2_path)
                                             crop_urls.append({
                                                 "url": url,
                                                 "class_name": crop.get("class_name", "Unknown"),
@@ -659,7 +724,7 @@ class InferenceState(rx.State):
                     r2_path = thumb_path if thumb_path else img.get("r2_path", "")
                     if r2_path:
                         t_url = time.time()
-                        url = r2_client.generate_presigned_url(r2_path, expires_in=3600)
+                        url = _cached_presigned_url(r2_client, r2_path)
                         self.preview_batch_urls.append(url)
                         print(f"[Preview Timer] URL {i+1}/{len(batch_images)}: {(time.time()-t_url)*1000:.1f}ms ({'thumb' if thumb_path else 'full'})")
                     else:
@@ -1712,12 +1777,40 @@ class InferenceState(rx.State):
         self.upload_stage = "ready"
     
     def update_video_start_time(self, value: list[float]):
-        """Update video start time from slider."""
+        """Update video start time from slider (legacy)."""
         self.video_start_time = value[0]
     
+    def set_video_start_input(self, value: str):
+        """Set video start time from text input."""
+        try:
+            v = round(max(0.0, min(self.video_duration, float(value))), 1)
+            self.video_start_time = v
+        except (ValueError, TypeError):
+            pass
+    
+    def increment_video_start(self):
+        self.video_start_time = round(min(self.video_duration, self.video_start_time + 0.5), 1)
+    
+    def decrement_video_start(self):
+        self.video_start_time = round(max(0.0, self.video_start_time - 0.5), 1)
+    
     def update_video_end_time(self, value: list[float]):
-        """Update video end time from slider."""
+        """Update video end time from slider (legacy)."""
         self.video_end_time = value[0]
+    
+    def set_video_end_input(self, value: str):
+        """Set video end time from text input."""
+        try:
+            v = round(max(0.0, min(self.video_duration, float(value))), 1)
+            self.video_end_time = v
+        except (ValueError, TypeError):
+            pass
+    
+    def increment_video_end(self):
+        self.video_end_time = round(min(self.video_duration, self.video_end_time + 0.5), 1)
+    
+    def decrement_video_end(self):
+        self.video_end_time = round(max(0.0, self.video_end_time - 0.5), 1)
     
     def toggle_frame_skip(self):
         """Toggle frame skip on/off."""
@@ -2089,6 +2182,7 @@ class InferenceState(rx.State):
                 user_id=user_id,
                 machine_name=self.selected_machine if self.compute_target == "local" else None,
                 sam3_model_path=_sam3_model_path,
+                sam3_imgsz=int(self.sam3_imgsz),
             )
             
             # Build batch_images list for DB storage
@@ -2977,6 +3071,7 @@ class InferenceState(rx.State):
                 confidence_threshold=_confidence,
                 classifier_confidence=_classifier_confidence,
                 sam3_model_path=_sam3_model_path_vol,
+                sam3_imgsz=int(self.sam3_imgsz),
             )
             
             print(f"  Batch inference complete: {len(batch_results)} results")
@@ -3139,8 +3234,23 @@ class InferenceState(rx.State):
             await asyncio.sleep(0.4)  # Poll slightly faster
     
     def update_confidence_threshold(self, value: list[float]):
-        """Update confidence threshold (live update, no save)."""
+        """Update confidence threshold from slider (legacy)."""
         self.confidence_threshold = round(float(value[0]), 2)
+    
+    async def set_confidence_input(self, value: str):
+        """Set confidence from text input."""
+        v = _validate_numeric(value, 0.0, 1.0, 0.01, is_float=True)
+        if v is not None:
+            self.confidence_threshold = v
+            await self.save_confidence_pref()
+    
+    async def increment_confidence(self):
+        self.confidence_threshold = round(min(1.0, self.confidence_threshold + 0.05), 2)
+        await self.save_confidence_pref()
+    
+    async def decrement_confidence(self):
+        self.confidence_threshold = round(max(0.0, self.confidence_threshold - 0.05), 2)
+        await self.save_confidence_pref()
     
     async def save_confidence_pref(self, _value=None):
         """Save confidence preference on slider release.
@@ -3386,6 +3496,7 @@ class InferenceState(rx.State):
                 user_id=user_id,
                 machine_name=self.selected_machine if self.compute_target == "local" else None,
                 sam3_model_path=_sam3_model_path,
+                sam3_imgsz=int(self.sam3_imgsz),
             )
             
             if not result.get("success"):

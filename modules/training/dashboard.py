@@ -76,7 +76,7 @@ def numeric_stepper(
     display_width: str = "56px",
 ) -> rx.Component:
     """Compact numeric input with −/+ stepper buttons. Replaces slider for discrete values."""
-    label_items = [rx.text(label, size="1", weight="medium", style={"color": styles.TEXT_PRIMARY})]
+    label_items = [rx.text(label, size="1", weight="medium", style={"color": styles.TEXT_SECONDARY})]
     if tooltip:
         label_items.append(
             rx.tooltip(
