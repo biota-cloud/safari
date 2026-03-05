@@ -2834,8 +2834,10 @@ class TrainingState(rx.State):
             yield rx.toast.error("User not authenticated")
             return
         
-        # Determine weights path
-        weights_file = "best.pt" if model_type == "best" else "last.pt"
+        # Determine weights path - ConvNeXt uses .pth, YOLO uses .pt
+        is_convnext = run.config.get("classifier_backbone") == "convnext"
+        ext = ".pth" if is_convnext else ".pt"
+        weights_file = f"best{ext}" if model_type == "best" else f"last{ext}"
         weights_path = f"{run.artifacts_r2_prefix}/{weights_file}"
         
         # Get dataset_id from run (use first one if multiple)
@@ -2927,8 +2929,10 @@ class TrainingState(rx.State):
         yield
         
         try:
-            # Determine weights path
-            weights_file = "best.pt" if model_type == "best" else "last.pt"
+            # Determine weights path - ConvNeXt uses .pth, YOLO uses .pt
+            is_convnext = run.config.get("classifier_backbone") == "convnext"
+            ext = ".pth" if is_convnext else ".pt"
+            weights_file = f"best{ext}" if model_type == "best" else f"last{ext}"
             weights_path = f"{run.artifacts_r2_prefix}/{weights_file}"
             
             # CHECK FOR DUPLICATES - prevent adding the same model twice
