@@ -606,7 +606,7 @@ def configuration_card() -> rx.Component:
                 size="1",
                 width="100%",
             ),
-            style={"margin": "8px 0"},
+            style={"margin": "8px 0", "max_width": "100%", "overflow": "hidden"},
         ),
         
         rx.divider(style={"border_color": styles.BORDER, "margin": "4px 0"}),
