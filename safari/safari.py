@@ -67,6 +67,7 @@ app = rx.App(
     ],
     # Load scripts globally for labeling editor
     head_components=[
+        rx.script(src="/slider_throttle.js"),  # WS throttle for slider events (must load first)
         rx.script(src="/global_shortcuts.js"),  # Global shortcuts (H for dashboard)
         rx.script(src="/labeling_shortcuts.js"),  # Shortcuts config (load first)
         rx.script(src="/canvas.js"),
