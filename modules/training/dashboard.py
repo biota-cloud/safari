@@ -610,29 +610,44 @@ def configuration_card() -> rx.Component:
                     TrainingState.training_mode,
                     # Detection config
                     ("detection", rx.vstack(
-                        # Epochs — uncontrolled slider (thumb moves freely, zero WS during drag)
+                        # Epochs — pure HTML slider (zero Reflex bindings during drag)
                         rx.vstack(
                             rx.hstack(
                                 rx.text("Epochs", size="1", weight="medium", style={"color": styles.TEXT_PRIMARY}),
                                 rx.spacer(),
-                                rx.text(
+                                rx.el.span(
                                     TrainingState.epochs,
-                                    size="1",
-                                    weight="bold",
-                                    style={"color": styles.ACCENT, "font_family": styles.FONT_FAMILY_MONO},
                                     id="epochs-value-display",
+                                    style={
+                                        "color": styles.ACCENT,
+                                        "font_family": styles.FONT_FAMILY_MONO,
+                                        "font_size": "12px",
+                                        "font_weight": "bold",
+                                    },
                                 ),
                                 width="100%",
                             ),
-                            rx.slider(
-                                default_value=[TrainingState.epochs],
-                                min=10,
-                                max=500,
-                                step=10,
-                                on_value_commit=TrainingState.set_epochs_commit,
-                                style={"width": "100%"},
-                                size="1",
-                                id="epochs-slider",
+                            # Pure HTML range input — no Reflex state binding
+                            rx.el.input(
+                                type="range",
+                                id="epochs-range",
+                                min="10",
+                                max="500",
+                                step="10",
+                                default_value="100",
+                                custom_attrs={"data-initial": TrainingState.epochs},
+                                style={
+                                    "width": "100%",
+                                    "height": "6px",
+                                    "accent_color": styles.ACCENT,
+                                    "cursor": "pointer",
+                                },
+                            ),
+                            # Hidden input bridge — JS sets value, on_change syncs to Python
+                            rx.el.input(
+                                type="hidden",
+                                id="epochs-bridge",
+                                on_change=TrainingState.set_epochs_from_js,
                             ),
                             spacing="1",
                         ),

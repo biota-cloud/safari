@@ -1,19 +1,16 @@
 /**
  * Global slider performance optimizations for Reflex apps.
  *
- * 1. WS Throttle: Limits slider on_change WS messages to max 1 per 300ms
- *    (for sliders that still use controlled value + on_change).
- *
- * 2. Value Display Observer: Updates displayed value text during drag
- *    for uncontrolled sliders (default_value + on_value_commit only).
- *    Zero WS traffic — reads aria-valuenow from the slider thumb.
+ * 1. WS Throttle: Limits slider on_change WS messages for controlled sliders.
+ * 2. Pure HTML Slider Management: Initializes, updates display, and syncs
+ *    pure HTML range inputs that bypass Reflex's auto-generated controlled bindings.
  *
  * Loaded as the first head_component to patch WebSocket.prototype.send
  * before any Reflex WS connections are established.
  */
 
 // ============================================================
-// 1. WebSocket Throttle for controlled sliders
+// 1. WebSocket Throttle for controlled sliders (non-epoch)
 // ============================================================
 (function () {
     if (window._sliderThrottleInstalled) return;
@@ -21,7 +18,6 @@
 
     var origSend = WebSocket.prototype.send;
 
-    // Throttle config: event handler name -> settings
     var throttled = {
         set_patience: { lastSent: 0, pending: null, timer: null, limit: 300 },
         set_lr0: { lastSent: 0, pending: null, timer: null, limit: 300 },
@@ -85,47 +81,101 @@
 })();
 
 // ============================================================
-// 2. MutationObserver for uncontrolled slider value display
+// 2. Pure HTML slider management (epochs)
 // ============================================================
 (function () {
-    // Map: slider container ID -> display element ID
-    var sliderDisplayMap = {
-        "epochs-slider": "epochs-value-display",
-    };
+    /**
+     * For each slider config:
+     * - rangeId: the <input type="range"> element
+     * - displayId: the <span> showing the current value
+     * - bridgeId: hidden <input> that triggers Reflex on_change on release
+     */
+    var sliders = [
+        {
+            rangeId: "epochs-range",
+            displayId: "epochs-value-display",
+            bridgeId: "epochs-bridge",
+        },
+    ];
 
-    function installObservers() {
-        var keys = Object.keys(sliderDisplayMap);
-        for (var i = 0; i < keys.length; i++) {
-            var sliderId = keys[i];
-            var displayId = sliderDisplayMap[sliderId];
-            var container = document.getElementById(sliderId);
-            var display = document.getElementById(displayId);
+    function setupSlider(cfg) {
+        var range = document.getElementById(cfg.rangeId);
+        var display = document.getElementById(cfg.displayId);
+        var bridge = document.getElementById(cfg.bridgeId);
 
-            if (!container || !display || container.dataset.observed) continue;
+        if (!range || !bridge || range.dataset.managed) return false;
+        range.dataset.managed = "true";
 
-            var thumb = container.querySelector('[role="slider"]');
-            if (!thumb) continue;
-
-            container.dataset.observed = "true";
-
-            // Create observer closure
-            (function (t, d) {
-                new MutationObserver(function (mutations) {
-                    for (var j = 0; j < mutations.length; j++) {
-                        if (mutations[j].attributeName === "aria-valuenow") {
-                            d.textContent = t.getAttribute("aria-valuenow");
-                        }
-                    }
-                }).observe(t, { attributes: true, attributeFilter: ["aria-valuenow"] });
-            })(thumb, display);
+        // Set initial value from data-initial attribute (rendered by Reflex from state)
+        var initial = range.getAttribute("data-initial");
+        if (initial && initial !== "None" && initial !== "undefined") {
+            range.value = initial;
         }
+
+        // Update display immediately with initial value
+        if (display) {
+            display.textContent = range.value;
+        }
+
+        // Live display update during drag — zero WS, purely client-side
+        range.addEventListener("input", function () {
+            if (display) {
+                display.textContent = range.value;
+            }
+        });
+
+        // On release: sync to Python via hidden input bridge
+        range.addEventListener("change", function () {
+            if (bridge) {
+                // Set value and dispatch change event to trigger Reflex on_change
+                var nativeInputValueSetter = Object.getOwnPropertyDescriptor(
+                    window.HTMLInputElement.prototype,
+                    "value"
+                ).set;
+                nativeInputValueSetter.call(bridge, range.value);
+                bridge.dispatchEvent(new Event("change", { bubbles: true }));
+            }
+        });
+
+        return true;
     }
 
-    // Poll for slider elements (they may render after page load)
+    function installAll() {
+        var allDone = true;
+        for (var i = 0; i < sliders.length; i++) {
+            if (!document.getElementById(sliders[i].rangeId)) {
+                allDone = false;
+                continue;
+            }
+            if (
+                document.getElementById(sliders[i].rangeId) &&
+                !document.getElementById(sliders[i].rangeId).dataset.managed
+            ) {
+                if (!setupSlider(sliders[i])) allDone = false;
+            }
+        }
+        return allDone;
+    }
+
+    // Poll for elements (page may not be rendered yet)
     var attempts = 0;
     var iv = setInterval(function () {
-        installObservers();
+        installAll();
         attempts++;
-        if (attempts > 60) clearInterval(iv); // Stop after 30s
+        if (attempts > 120) clearInterval(iv); // Stop after 60s
+    }, 500);
+
+    // Also re-install on page navigation (Reflex SPA transitions)
+    var lastPath = "";
+    setInterval(function () {
+        if (window.location.pathname !== lastPath) {
+            lastPath = window.location.pathname;
+            // Reset managed flags on path change
+            for (var i = 0; i < sliders.length; i++) {
+                var el = document.getElementById(sliders[i].rangeId);
+                if (el) delete el.dataset.managed;
+            }
+            installAll();
+        }
     }, 500);
 })();
