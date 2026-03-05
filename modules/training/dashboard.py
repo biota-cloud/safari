@@ -66,6 +66,69 @@ def config_section(
     )
 
 
+def numeric_stepper(
+    label: str,
+    value: rx.Var,
+    on_blur_handler,
+    on_increment,
+    on_decrement,
+) -> rx.Component:
+    """Compact numeric input with −/+ stepper buttons. Replaces slider for discrete integer values."""
+    return rx.hstack(
+        rx.text(label, size="1", weight="medium", style={"color": styles.TEXT_PRIMARY}),
+        rx.spacer(),
+        rx.hstack(
+            # Minus button
+            rx.icon_button(
+                rx.icon("minus", size=12),
+                size="1",
+                variant="ghost",
+                on_click=on_decrement,
+                style={
+                    "cursor": "pointer",
+                    "border_radius": styles.RADIUS_SM,
+                    "color": styles.TEXT_SECONDARY,
+                    "&:hover": {"background": styles.BG_TERTIARY, "color": styles.TEXT_PRIMARY},
+                },
+            ),
+            # Text input
+            rx.input(
+                default_value=value.to(str),
+                on_blur=on_blur_handler,
+                on_key_down=rx.call_script("if (event.key === 'Enter') event.target.blur()"),
+                size="1",
+                style={
+                    "width": "56px",
+                    "text_align": "center",
+                    "color": styles.ACCENT,
+                    "font_weight": "bold",
+                    "font_family": styles.FONT_FAMILY_MONO,
+                    "background": "transparent",
+                    "border": f"1px solid {styles.BORDER}",
+                    "border_radius": styles.RADIUS_SM,
+                },
+            ),
+            # Plus button
+            rx.icon_button(
+                rx.icon("plus", size=12),
+                size="1",
+                variant="ghost",
+                on_click=on_increment,
+                style={
+                    "cursor": "pointer",
+                    "border_radius": styles.RADIUS_SM,
+                    "color": styles.TEXT_SECONDARY,
+                    "&:hover": {"background": styles.BG_TERTIARY, "color": styles.TEXT_PRIMARY},
+                },
+            ),
+            spacing="1",
+            align="center",
+        ),
+        width="100%",
+        align="center",
+    )
+
+
 def breadcrumb_nav() -> rx.Component:
     """Breadcrumb navigation."""
     return rx.hstack(
@@ -611,29 +674,12 @@ def configuration_card() -> rx.Component:
                     # Detection config
                     ("detection", rx.vstack(
                         # Epochs
-                        rx.vstack(
-                            rx.hstack(
-                                rx.text("Epochs", size="1", weight="medium", style={"color": styles.TEXT_PRIMARY}),
-                                rx.spacer(),
-                                rx.text(
-                                    TrainingState.epochs,
-                                    size="1",
-                                    weight="bold",
-                                    style={"color": styles.ACCENT, "font_family": styles.FONT_FAMILY_MONO},
-                                ),
-                                width="100%",
-                            ),
-                            rx.slider(
-                                value=[TrainingState.epochs],
-                                min=10,
-                                max=500,
-                                step=10,
-                                on_change=TrainingState.set_epochs,
-                                on_value_commit=TrainingState.save_training_prefs,
-                                style={"width": "100%"},
-                                size="1",
-                            ),
-                            spacing="1",
+                        numeric_stepper(
+                            label="Epochs",
+                            value=TrainingState.epochs,
+                            on_blur_handler=TrainingState.set_epochs_input,
+                            on_increment=TrainingState.increment_epochs,
+                            on_decrement=TrainingState.decrement_epochs,
                         ),
                         # 2-column grid for dropdowns
                         rx.grid(
@@ -2209,33 +2255,15 @@ def unified_run_config_card() -> rx.Component:
                             size="1",
                             width="100%",
                         ),
-                        # Epochs slider (hidden for SAM3 which has its own)
+                        # Epochs stepper (hidden for SAM3 which has its own)
                         rx.cond(
                             TrainingState.training_mode != "sam3_finetune",
-                            rx.vstack(
-                                rx.hstack(
-                                    rx.text("Epochs", size="1", weight="medium", style={"color": styles.TEXT_PRIMARY}),
-                                    rx.spacer(),
-                                    rx.text(
-                                        TrainingState.epochs,
-                                        size="2",
-                                        weight="bold",
-                                        style={"color": styles.ACCENT, "font_family": styles.FONT_FAMILY_MONO},
-                                    ),
-                                    width="100%",
-                                ),
-                                rx.slider(
-                                    value=[TrainingState.epochs],
-                                    min=10,
-                                    max=500,
-                                    step=10,
-                                    on_change=TrainingState.set_epochs,
-                                    on_value_commit=TrainingState.save_training_prefs,
-                                    style={"width": "100%"},
-                                    size="1",
-                                ),
-                                spacing="1",
-                                width="100%",
+                            numeric_stepper(
+                                label="Epochs",
+                                value=TrainingState.epochs,
+                                on_blur_handler=TrainingState.set_epochs_input,
+                                on_increment=TrainingState.increment_epochs,
+                                on_decrement=TrainingState.decrement_epochs,
                             ),
                         ),
                         # SAM3 config (shown only for SAM3 mode)
@@ -2286,33 +2314,15 @@ def unified_run_config_card() -> rx.Component:
                             size="1",
                             width="100%",
                         ),
-                        # Epochs slider (hidden for SAM3 which has its own)
+                        # Epochs stepper (hidden for SAM3 which has its own)
                         rx.cond(
                             TrainingState.training_mode != "sam3_finetune",
-                            rx.vstack(
-                                rx.hstack(
-                                    rx.text("Epochs", size="1", weight="medium", style={"color": styles.TEXT_PRIMARY}),
-                                    rx.spacer(),
-                                    rx.text(
-                                        TrainingState.epochs,
-                                        size="2",
-                                        weight="bold",
-                                        style={"color": styles.ACCENT, "font_family": styles.FONT_FAMILY_MONO},
-                                    ),
-                                    width="100%",
-                                ),
-                                rx.slider(
-                                    value=[TrainingState.epochs],
-                                    min=10,
-                                    max=500,
-                                    step=10,
-                                    on_change=TrainingState.set_epochs,
-                                    on_value_commit=TrainingState.save_training_prefs,
-                                    style={"width": "100%"},
-                                    size="1",
-                                ),
-                                spacing="1",
-                                width="100%",
+                            numeric_stepper(
+                                label="Epochs",
+                                value=TrainingState.epochs,
+                                on_blur_handler=TrainingState.set_epochs_input,
+                                on_increment=TrainingState.increment_epochs,
+                                on_decrement=TrainingState.decrement_epochs,
                             ),
                         ),
                         # Mode-specific dropdowns in 2-column grid

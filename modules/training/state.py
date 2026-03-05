@@ -544,6 +544,27 @@ class TrainingState(rx.State):
         except (ValueError, TypeError):
             pass
     
+    async def set_epochs_input(self, value: str):
+        """Set epochs from text input. Clamp to 10-500, snap to step of 10."""
+        try:
+            v = int(value)
+            v = max(10, min(500, v))
+            v = round(v / 10) * 10  # Snap to nearest 10
+            self.epochs = v
+            await self.save_training_prefs()
+        except (ValueError, TypeError):
+            pass  # Keep current value on invalid input
+    
+    async def increment_epochs(self):
+        """Increment epochs by 10, capped at 500."""
+        self.epochs = min(500, self.epochs + 10)
+        await self.save_training_prefs()
+    
+    async def decrement_epochs(self):
+        """Decrement epochs by 10, minimum 10."""
+        self.epochs = max(10, self.epochs - 10)
+        await self.save_training_prefs()
+    
     def set_sam3_max_epochs(self, value: list[int]):
         """Set SAM3 max epochs from slider (live update, no save)."""
         if value:
