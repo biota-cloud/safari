@@ -628,7 +628,7 @@ def configuration_card() -> rx.Component:
                                 min=10,
                                 max=500,
                                 step=10,
-                                on_change=TrainingState.set_epochs,
+                                on_change=TrainingState.set_epochs.throttle(200),
                                 on_value_commit=TrainingState.save_training_prefs,
                                 style={"width": "100%"},
                                 size="1",
