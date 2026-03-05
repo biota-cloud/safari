@@ -610,7 +610,7 @@ def configuration_card() -> rx.Component:
                     TrainingState.training_mode,
                     # Detection config
                     ("detection", rx.vstack(
-                        # Epochs — performance handled by slider_throttle.js
+                        # Epochs
                         rx.vstack(
                             rx.hstack(
                                 rx.text("Epochs", size="1", weight="medium", style={"color": styles.TEXT_PRIMARY}),

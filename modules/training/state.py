@@ -541,7 +541,6 @@ class TrainingState(rx.State):
         """Set epochs from native HTML range input via hidden input bridge."""
         try:
             self.epochs = int(value)
-            self.save_training_prefs()
         except (ValueError, TypeError):
             pass
     
