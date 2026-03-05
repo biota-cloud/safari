@@ -72,10 +72,20 @@ def numeric_stepper(
     on_blur_handler,
     on_increment,
     on_decrement,
+    tooltip: str = None,
+    display_width: str = "56px",
 ) -> rx.Component:
-    """Compact numeric input with −/+ stepper buttons. Replaces slider for discrete integer values."""
+    """Compact numeric input with −/+ stepper buttons. Replaces slider for discrete values."""
+    label_items = [rx.text(label, size="1", weight="medium", style={"color": styles.TEXT_PRIMARY})]
+    if tooltip:
+        label_items.append(
+            rx.tooltip(
+                rx.icon("info", size=12, color=styles.TEXT_SECONDARY, cursor="help"),
+                content=tooltip,
+            )
+        )
     return rx.hstack(
-        rx.text(label, size="1", weight="medium", style={"color": styles.TEXT_PRIMARY}),
+        rx.hstack(*label_items, spacing="1", align="center"),
         rx.spacer(),
         rx.hstack(
             # Minus button
@@ -98,7 +108,7 @@ def numeric_stepper(
                 on_key_down=rx.call_script("if (event.key === 'Enter') event.target.blur()"),
                 size="1",
                 style={
-                    "width": "56px",
+                    "width": display_width,
                     "text_align": "center",
                     "color": styles.ACCENT,
                     "font_weight": "bold",
@@ -463,60 +473,21 @@ def sam3_config_panel() -> rx.Component:
             },
         ),
         # Max Epochs
-        rx.vstack(
-            rx.hstack(
-                rx.text("Max Epochs", size="1", weight="medium", style={"color": styles.TEXT_PRIMARY}),
-                rx.spacer(),
-                rx.text(
-                    TrainingState.sam3_max_epochs,
-                    size="1",
-                    weight="bold",
-                    style={"color": styles.ACCENT, "font_family": styles.FONT_FAMILY_MONO},
-                ),
-                width="100%",
-            ),
-            rx.slider(
-                value=[TrainingState.sam3_max_epochs],
-                min=1,
-                max=20,
-                step=1,
-                on_change=TrainingState.set_sam3_max_epochs,
-                style={"width": "100%"},
-                size="1",
-            ),
-            spacing="1",
+        numeric_stepper(
+            label="Max Epochs",
+            value=TrainingState.sam3_max_epochs,
+            on_blur_handler=TrainingState.set_sam3_epochs_input,
+            on_increment=TrainingState.increment_sam3_epochs,
+            on_decrement=TrainingState.decrement_sam3_epochs,
         ),
         # Patience (early stopping)
-        rx.vstack(
-            rx.hstack(
-                rx.text("Patience", size="1", weight="medium", style={"color": styles.TEXT_PRIMARY}),
-                rx.tooltip(
-                    rx.icon("info", size=12, color=styles.TEXT_SECONDARY, cursor="help"),
-                    content="Early stopping patience. Training stops if mAP doesn't improve for this many epochs. Set to 0 to disable.",
-                ),
-                rx.spacer(),
-                rx.text(
-                    rx.cond(
-                        TrainingState.sam3_early_stop_patience == 0,
-                        "Off",
-                        TrainingState.sam3_early_stop_patience,
-                    ),
-                    size="1",
-                    weight="bold",
-                    style={"color": styles.ACCENT, "font_family": styles.FONT_FAMILY_MONO},
-                ),
-                width="100%",
-            ),
-            rx.slider(
-                value=[TrainingState.sam3_early_stop_patience],
-                min=0,
-                max=5,
-                step=1,
-                on_change=TrainingState.set_sam3_early_stop_patience,
-                style={"width": "100%"},
-                size="1",
-            ),
-            spacing="1",
+        numeric_stepper(
+            label="Patience",
+            value=TrainingState.sam3_early_stop_patience,
+            on_blur_handler=TrainingState.set_sam3_patience_input,
+            on_increment=TrainingState.increment_sam3_patience,
+            on_decrement=TrainingState.decrement_sam3_patience,
+            tooltip="Early stopping patience. Training stops if mAP doesn't improve for this many epochs. Set to 0 to disable.",
         ),
         # 2-column grid
         rx.grid(
@@ -717,29 +688,12 @@ def configuration_card() -> rx.Component:
                     # Classification config
                     ("classification", rx.vstack(
                         # Epochs (shared)
-                        rx.vstack(
-                            rx.hstack(
-                                rx.text("Epochs", size="1", weight="medium", style={"color": styles.TEXT_PRIMARY}),
-                                rx.spacer(),
-                                rx.text(
-                                    TrainingState.epochs,
-                                    size="1",
-                                    weight="bold",
-                                    style={"color": styles.ACCENT, "font_family": styles.FONT_FAMILY_MONO},
-                                ),
-                                width="100%",
-                            ),
-                            rx.slider(
-                                value=[TrainingState.epochs],
-                                min=10,
-                                max=500,
-                                step=10,
-                                on_change=TrainingState.set_epochs,
-                                on_value_commit=TrainingState.save_training_prefs,
-                                style={"width": "100%"},
-                                size="1",
-                            ),
-                            spacing="1",
+                        numeric_stepper(
+                            label="Epochs",
+                            value=TrainingState.epochs,
+                            on_blur_handler=TrainingState.set_epochs_input,
+                            on_increment=TrainingState.increment_epochs,
+                            on_decrement=TrainingState.decrement_epochs,
                         ),
                         classification_config_panel(),
                         spacing="3",
@@ -843,24 +797,12 @@ def configuration_card() -> rx.Component:
                         TrainingState.show_advanced_settings,
                         rx.vstack(
                             # Patience
-                            rx.vstack(
-                                rx.hstack(
-                                    rx.text("Patience", size="1", style={"color": styles.TEXT_SECONDARY}),
-                                    rx.spacer(),
-                                    rx.text(f"{TrainingState.patience}", size="1", weight="bold", style={"color": styles.ACCENT}),
-                                    width="100%",
-                                ),
-                                rx.slider(
-                                    value=[TrainingState.patience],
-                                    min=5,
-                                    max=100,
-                                    step=5,
-                                    on_change=TrainingState.set_patience,
-                                    on_value_commit=TrainingState.save_training_prefs,
-                                    style={"width": "100%"},
-                                    size="1",
-                                ),
-                                spacing="1",
+                            numeric_stepper(
+                                label="Patience",
+                                value=TrainingState.patience,
+                                on_blur_handler=TrainingState.set_patience_input,
+                                on_increment=TrainingState.increment_patience,
+                                on_decrement=TrainingState.decrement_patience,
                             ),
                             # Optimizer
                             rx.vstack(
@@ -877,174 +819,73 @@ def configuration_card() -> rx.Component:
                                 ),
                                 spacing="1",
                             ),
-                            # Learning Rate (lr0) - conditional based on backbone
+                            # Learning Rate - conditional based on backbone
                             rx.cond(
                                 (TrainingState.training_mode == "classification") & (TrainingState.classifier_backbone == "convnext"),
                                 # ConvNeXt: LR + Weight Decay stacked vertically
                                 rx.vstack(
-                                    # Initial LR
-                                    rx.vstack(
-                                        rx.hstack(
-                                            rx.text("ConvNeXt LR", size="1", style={"color": styles.TEXT_SECONDARY}),
-                                            rx.tooltip(
-                                                rx.icon("info", size=12, color=styles.TEXT_SECONDARY),
-                                                content=(
-                                                    "Recommended LR by model size:\n"
-                                                    "• Tiny:   1e-4  – 5e-5\n"
-                                                    "• Small: 1e-4  – 5e-5\n"
-                                                    "• Base:  5e-5  – 1e-5\n"
-                                                    "• Large: 2e-5  – 5e-6\n"
-                                                    "Lower LR = gentler fine-tuning"
-                                                ),
-                                            ),
-                                            spacing="1",
-                                            align="center",
+                                    numeric_stepper(
+                                        label="ConvNeXt LR",
+                                        value=TrainingState.convnext_lr0,
+                                        on_blur_handler=TrainingState.set_convnext_lr0_input,
+                                        on_increment=TrainingState.increment_convnext_lr0,
+                                        on_decrement=TrainingState.decrement_convnext_lr0,
+                                        tooltip=(
+                                            "Recommended LR by model size:\n"
+                                            "• Tiny:   1e-4  – 5e-5\n"
+                                            "• Small: 1e-4  – 5e-5\n"
+                                            "• Base:  5e-5  – 1e-5\n"
+                                            "• Large: 2e-5  – 5e-6\n"
+                                            "Lower LR = gentler fine-tuning"
                                         ),
-                                        rx.input(
-                                            default_value=TrainingState.convnext_lr0.to_string(),
-                                            on_blur=TrainingState.set_convnext_lr0_input,
-                                            on_key_down=rx.call_script("if (event.key === 'Enter') event.target.blur()"),
-                                            size="1",
-                                            style={
-                                                "width": "100%",
-                                                "text_align": "center",
-                                                "color": styles.ACCENT,
-                                                "font_weight": "bold",
-                                                "font_family": styles.FONT_FAMILY_MONO,
-                                                "background": "transparent",
-                                                "border": f"1px solid {styles.BORDER}",
-                                            },
-                                        ),
-                                        rx.slider(
-                                            value=[TrainingState.convnext_lr0_slider_value],
-                                            min=0,
-                                            max=100,
-                                            step=1,
-                                            on_change=TrainingState.set_convnext_lr0_slider,
-                                            on_value_commit=TrainingState.save_training_prefs,
-                                            style={"width": "100%"},
-                                            size="1",
-                                        ),
-                                        spacing="1",
-                                        width="100%",
+                                        display_width="80px",
                                     ),
-                                    # Weight Decay
-                                    rx.vstack(
-                                        rx.hstack(
-                                            rx.text("Weight Decay", size="1", style={"color": styles.TEXT_SECONDARY}),
-                                            rx.tooltip(
-                                                rx.icon("info", size=12, color=styles.TEXT_SECONDARY),
-                                                content="AdamW weight decay for regularization. Higher values prevent overfitting but may reduce model capacity. Default: 0.05",
-                                            ),
-                                            spacing="1",
-                                            align="center",
-                                        ),
-                                        rx.input(
-                                            default_value=TrainingState.convnext_weight_decay.to_string(),
-                                            on_blur=TrainingState.set_convnext_weight_decay_input,
-                                            on_key_down=rx.call_script("if (event.key === 'Enter') event.target.blur()"),
-                                            size="1",
-                                            style={
-                                                "width": "100%",
-                                                "text_align": "center",
-                                                "color": styles.ACCENT,
-                                                "font_weight": "bold",
-                                                "font_family": styles.FONT_FAMILY_MONO,
-                                                "background": "transparent",
-                                                "border": f"1px solid {styles.BORDER}",
-                                            },
-                                        ),
-                                        rx.slider(
-                                            value=[TrainingState.convnext_weight_decay_slider_value],
-                                            min=0,
-                                            max=100,
-                                            step=1,
-                                            on_change=TrainingState.set_convnext_weight_decay_slider,
-                                            on_value_commit=TrainingState.save_training_prefs,
-                                            style={"width": "100%"},
-                                            size="1",
-                                        ),
-                                        spacing="1",
-                                        width="100%",
+                                    numeric_stepper(
+                                        label="Weight Decay",
+                                        value=TrainingState.convnext_weight_decay,
+                                        on_blur_handler=TrainingState.set_convnext_weight_decay_input,
+                                        on_increment=TrainingState.increment_convnext_wd,
+                                        on_decrement=TrainingState.decrement_convnext_wd,
+                                        tooltip="AdamW weight decay for regularization. Higher values prevent overfitting but may reduce model capacity. Default: 0.05",
+                                        display_width="72px",
                                     ),
                                     spacing="2",
                                     width="100%",
                                 ),
                                 # YOLO/Detection: standard LR range (0.001 to 0.1)
-                                rx.vstack(
-                                    rx.hstack(
-                                        rx.text("Initial LR", size="1", style={"color": styles.TEXT_SECONDARY}),
-                                        rx.spacer(),
-                                        rx.text(f"{TrainingState.lr0}", size="1", weight="bold", style={"color": styles.ACCENT}),
-                                        width="100%",
-                                    ),
-                                    rx.slider(
-                                        value=[TrainingState.lr0_slider_value],
-                                        min=0,
-                                        max=100,
-                                        step=1,
-                                        on_change=TrainingState.set_lr0,
-                                        on_value_commit=TrainingState.save_training_prefs,
-                                        style={"width": "100%"},
-                                        size="1",
-                                    ),
-                                    spacing="1",
+                                numeric_stepper(
+                                    label="Initial LR",
+                                    value=TrainingState.lr0,
+                                    on_blur_handler=TrainingState.set_lr0_input,
+                                    on_increment=TrainingState.increment_lr0,
+                                    on_decrement=TrainingState.decrement_lr0,
+                                    display_width="72px",
                                 ),
                             ),
                             # Final LR Factor (lrf) - only for YOLO, not used by ConvNeXt
                             rx.cond(
                                 ~((TrainingState.training_mode == "classification") & (TrainingState.classifier_backbone == "convnext")),
-                                rx.vstack(
-                                    rx.hstack(
-                                        rx.text("Final LR Factor", size="1", style={"color": styles.TEXT_SECONDARY}),
-                                        rx.spacer(),
-                                        rx.text(f"{TrainingState.lrf}", size="1", weight="bold", style={"color": styles.ACCENT}),
-                                        width="100%",
-                                    ),
-                                    rx.slider(
-                                        value=[TrainingState.lrf_slider_value],
-                                        min=0,
-                                        max=100,
-                                        step=1,
-                                        on_change=TrainingState.set_lrf,
-                                        on_value_commit=TrainingState.save_training_prefs,
-                                        style={"width": "100%"},
-                                        size="1",
-                                    ),
-                                    spacing="1",
+                                numeric_stepper(
+                                    label="Final LR Factor",
+                                    value=TrainingState.lrf,
+                                    on_blur_handler=TrainingState.set_lrf_input,
+                                    on_increment=TrainingState.increment_lrf,
+                                    on_decrement=TrainingState.decrement_lrf,
+                                    display_width="72px",
                                 ),
                             ),
                             # Train/Val Ratio (conditional)
-                            rx.vstack(
-                                rx.cond(
-                                    ~TrainingState.has_explicit_validation_datasets,
-                                    # Configurable slider otherwise
-                                    rx.vstack(
-                                        rx.hstack(
-                                            rx.text("Train/Val Ratio", size="1", style={"color": styles.TEXT_SECONDARY}),
-                                            rx.spacer(),
-                                            rx.text(
-                                                f"{TrainingState.train_split_percentage}% / {100 - TrainingState.train_split_percentage}%",
-                                                size="1",
-                                                weight="bold",
-                                                style={"color": styles.ACCENT}
-                                            ),
-                                            width="100%",
-                                        ),
-                                        rx.slider(
-                                            value=[TrainingState.train_split_percentage],
-                                            min=50,
-                                            max=95,
-                                            step=5,
-                                            on_change=TrainingState.set_train_split,
-                                            on_value_commit=TrainingState.save_training_prefs,
-                                            style={"width": "100%"},
-                                            size="1",
-                                        ),
-                                        spacing="1",
-                                    ),
+                            rx.cond(
+                                ~TrainingState.has_explicit_validation_datasets,
+                                numeric_stepper(
+                                    label="Train/Val",
+                                    value=TrainingState.train_split_percentage,
+                                    on_blur_handler=TrainingState.set_train_split_input,
+                                    on_increment=TrainingState.increment_train_split,
+                                    on_decrement=TrainingState.decrement_train_split,
+                                    tooltip="Percentage of images used for training vs validation",
+                                    display_width="56px",
                                 ),
-                                spacing="1",
                             ),
                             spacing="2",
                             width="100%",
@@ -2440,24 +2281,12 @@ def unified_run_config_card() -> rx.Component:
                                 # Row 1: Patience + Optimizer
                                 rx.grid(
                                     # Patience
-                                    rx.vstack(
-                                        rx.hstack(
-                                            rx.text("Patience", size="1", style={"color": styles.TEXT_SECONDARY}),
-                                            rx.spacer(),
-                                            rx.text(TrainingState.patience, size="1", weight="bold", style={"color": styles.ACCENT}),
-                                            width="100%",
-                                        ),
-                                        rx.slider(
-                                            value=[TrainingState.patience],
-                                            min=5,
-                                            max=100,
-                                            step=5,
-                                            on_change=TrainingState.set_patience,
-                                            on_value_commit=TrainingState.save_training_prefs,
-                                            size="1",
-                                        ),
-                                        spacing="1",
-                                        width="100%",
+                                    numeric_stepper(
+                                        label="Patience",
+                                        value=TrainingState.patience,
+                                        on_blur_handler=TrainingState.set_patience_input,
+                                        on_increment=TrainingState.increment_patience,
+                                        on_decrement=TrainingState.decrement_patience,
                                     ),
                                     # Optimizer
                                     rx.vstack(
@@ -2479,174 +2308,72 @@ def unified_run_config_card() -> rx.Component:
                                     spacing="3",
                                     width="100%",
                                 ),
-                                # Row 2: Initial LR + Final LR Factor
-                                rx.grid(
                                     # Initial Learning Rate (backbone-aware)
                                     rx.cond(
                                         (TrainingState.training_mode == "classification") & (TrainingState.classifier_backbone == "convnext"),
-                                        # ConvNeXt LR + Weight Decay stacked vertically
+                                        # ConvNeXt LR + Weight Decay stacked
                                         rx.vstack(
-                                            # Initial LR
-                                            rx.vstack(
-                                                rx.hstack(
-                                                    rx.text("ConvNeXt LR", size="1", style={"color": styles.TEXT_SECONDARY}),
-                                                    rx.tooltip(
-                                                        rx.icon("info", size=12, color=styles.TEXT_SECONDARY),
-                                                        content=(
-                                                            "Recommended LR by model size:\n"
-                                                            "• Tiny:   1e-4  – 5e-5\n"
-                                                            "• Small: 1e-4  – 5e-5\n"
-                                                            "• Base:  5e-5  – 1e-5\n"
-                                                            "• Large: 2e-5  – 5e-6\n"
-                                                            "Lower LR = gentler fine-tuning"
-                                                        ),
-                                                    ),
-                                                    spacing="1",
-                                                    align="center",
+                                            numeric_stepper(
+                                                label="ConvNeXt LR",
+                                                value=TrainingState.convnext_lr0,
+                                                on_blur_handler=TrainingState.set_convnext_lr0_input,
+                                                on_increment=TrainingState.increment_convnext_lr0,
+                                                on_decrement=TrainingState.decrement_convnext_lr0,
+                                                tooltip=(
+                                                    "Recommended LR by model size:\n"
+                                                    "• Tiny:   1e-4  – 5e-5\n"
+                                                    "• Small: 1e-4  – 5e-5\n"
+                                                    "• Base:  5e-5  – 1e-5\n"
+                                                    "• Large: 2e-5  – 5e-6\n"
+                                                    "Lower LR = gentler fine-tuning"
                                                 ),
-                                                rx.input(
-                                                    default_value=TrainingState.convnext_lr0.to_string(),
-                                                    on_blur=TrainingState.set_convnext_lr0_input,
-                                                    on_key_down=rx.call_script("if (event.key === 'Enter') event.target.blur()"),
-                                                    size="1",
-                                                    style={
-                                                        "width": "100%",
-                                                        "text_align": "center",
-                                                        "color": styles.ACCENT,
-                                                        "font_weight": "bold",
-                                                        "font_family": styles.FONT_FAMILY_MONO,
-                                                        "background": "transparent",
-                                                        "border": f"1px solid {styles.BORDER}",
-                                                    },
-                                                ),
-                                                rx.slider(
-                                                    value=[TrainingState.convnext_lr0_slider_value],
-                                                    min=0,
-                                                    max=100,
-                                                    step=1,
-                                                    on_change=TrainingState.set_convnext_lr0_slider,
-                                                    on_value_commit=TrainingState.save_training_prefs,
-                                                    size="1",
-                                                ),
-                                                spacing="1",
-                                                width="100%",
+                                                display_width="80px",
                                             ),
-                                            # Weight Decay
-                                            rx.vstack(
-                                                rx.hstack(
-                                                    rx.text("Weight Decay", size="1", style={"color": styles.TEXT_SECONDARY}),
-                                                    rx.tooltip(
-                                                        rx.icon("info", size=12, color=styles.TEXT_SECONDARY),
-                                                        content="AdamW weight decay for regularization. Higher values prevent overfitting but may reduce model capacity. Default: 0.05",
-                                                    ),
-                                                    spacing="1",
-                                                    align="center",
-                                                ),
-                                                rx.input(
-                                                    default_value=TrainingState.convnext_weight_decay.to_string(),
-                                                    on_blur=TrainingState.set_convnext_weight_decay_input,
-                                                    on_key_down=rx.call_script("if (event.key === 'Enter') event.target.blur()"),
-                                                    size="1",
-                                                    style={
-                                                        "width": "100%",
-                                                        "text_align": "center",
-                                                        "color": styles.ACCENT,
-                                                        "font_weight": "bold",
-                                                        "font_family": styles.FONT_FAMILY_MONO,
-                                                        "background": "transparent",
-                                                        "border": f"1px solid {styles.BORDER}",
-                                                    },
-                                                ),
-                                                rx.slider(
-                                                    value=[TrainingState.convnext_weight_decay_slider_value],
-                                                    min=0,
-                                                    max=100,
-                                                    step=1,
-                                                    on_change=TrainingState.set_convnext_weight_decay_slider,
-                                                    on_value_commit=TrainingState.save_training_prefs,
-                                                    size="1",
-                                                ),
-                                                spacing="1",
-                                                width="100%",
+                                            numeric_stepper(
+                                                label="Weight Decay",
+                                                value=TrainingState.convnext_weight_decay,
+                                                on_blur_handler=TrainingState.set_convnext_weight_decay_input,
+                                                on_increment=TrainingState.increment_convnext_wd,
+                                                on_decrement=TrainingState.decrement_convnext_wd,
+                                                tooltip="AdamW weight decay for regularization. Default: 0.05",
+                                                display_width="72px",
                                             ),
                                             spacing="2",
                                             width="100%",
                                         ),
-                                        # YOLO LR (range: 0.001 to 0.1)
-                                        rx.vstack(
-                                            rx.hstack(
-                                                rx.text("Initial LR", size="1", style={"color": styles.TEXT_SECONDARY}),
-                                                rx.spacer(),
-                                                rx.text(TrainingState.lr0, size="1", weight="bold", style={"color": styles.ACCENT, "font_family": styles.FONT_FAMILY_MONO}),
-                                                width="100%",
-                                            ),
-                                            rx.slider(
-                                                value=[TrainingState.lr0_slider_value],
-                                                min=0,
-                                                max=100,
-                                                step=1,
-                                                on_change=TrainingState.set_lr0,
-                                                on_value_commit=TrainingState.save_training_prefs,
-                                                size="1",
-                                            ),
-                                            spacing="1",
-                                            width="100%",
+                                        # YOLO LR
+                                        numeric_stepper(
+                                            label="Initial LR",
+                                            value=TrainingState.lr0,
+                                            on_blur_handler=TrainingState.set_lr0_input,
+                                            on_increment=TrainingState.increment_lr0,
+                                            on_decrement=TrainingState.decrement_lr0,
+                                            display_width="72px",
                                         ),
                                     ),
-                                    # Final LR Factor - only for YOLO, not used by ConvNeXt
+                                    # Final LR Factor - only for YOLO
                                     rx.cond(
                                         ~((TrainingState.training_mode == "classification") & (TrainingState.classifier_backbone == "convnext")),
-                                        rx.vstack(
-                                            rx.hstack(
-                                                rx.text("Final LR", size="1", style={"color": styles.TEXT_SECONDARY}),
-                                                rx.spacer(),
-                                                rx.text(TrainingState.lrf, size="1", weight="bold", style={"color": styles.ACCENT, "font_family": styles.FONT_FAMILY_MONO}),
-                                                width="100%",
-                                            ),
-                                            rx.slider(
-                                                value=[TrainingState.lrf * 100],  # Scale for slider
-                                                min=1,
-                                                max=100,
-                                                step=1,
-                                                on_change=lambda v: TrainingState.set_lrf(v[0] / 100),
-                                                on_value_commit=TrainingState.save_training_prefs,
-                                                size="1",
-                                            ),
-                                            spacing="1",
-                                            width="100%",
+                                        numeric_stepper(
+                                            label="Final LR",
+                                            value=TrainingState.lrf,
+                                            on_blur_handler=TrainingState.set_lrf_input,
+                                            on_increment=TrainingState.increment_lrf,
+                                            on_decrement=TrainingState.decrement_lrf,
+                                            display_width="72px",
                                         ),
                                     ),
-                                    columns="2",
-                                    spacing="3",
-                                    width="100%",
-                                ),
-                                # Row 3: Train/Val Ratio (only when no explicit validation datasets)
+                                # Train/Val Ratio
                                 rx.cond(
                                     ~TrainingState.has_explicit_validation_datasets,
-                                    rx.vstack(
-                                        rx.hstack(
-                                            rx.text("Train/Val Ratio", size="1", style={"color": styles.TEXT_SECONDARY}),
-                                            rx.spacer(),
-                                            rx.text(
-                                                f"{TrainingState.train_split_percentage}% / {100 - TrainingState.train_split_percentage}%",
-                                                size="1",
-                                                weight="bold",
-                                                style={"color": styles.ACCENT}
-                                            ),
-                                            width="100%",
-                                        ),
-                                        rx.slider(
-                                            value=[TrainingState.train_split_percentage],
-                                            min=50,
-                                            max=95,
-                                            step=5,
-                                            on_change=TrainingState.set_train_split,
-                                            on_value_commit=TrainingState.save_training_prefs,
-                                            style={"width": "100%"},
-                                            size="1",
-                                        ),
-                                        spacing="1",
-                                        width="100%",
+                                    numeric_stepper(
+                                        label="Train/Val",
+                                        value=TrainingState.train_split_percentage,
+                                        on_blur_handler=TrainingState.set_train_split_input,
+                                        on_increment=TrainingState.increment_train_split,
+                                        on_decrement=TrainingState.decrement_train_split,
+                                        tooltip="Percentage of images used for training vs validation",
+                                        display_width="56px",
                                     ),
                                 ),
                                 spacing="4",
@@ -2779,7 +2506,7 @@ def dashboard_content() -> rx.Component:
                         unified_run_config_card(),
                         spacing="3",
                         width="100%",
-                        style={"padding_right": "12px"},  # Prevent content touching edge
+                        style={"padding_right": "16px"},  # Prevent content touching scrollbar edge
                     ),
                     type="hover",
                     scrollbars="vertical",

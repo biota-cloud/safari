@@ -32,6 +32,20 @@ from backend.r2_storage import R2Client
 from app_state import AuthState
 
 
+def _validate_numeric(value: str, min_val, max_val, step, is_float=False):
+    """Parse, clamp, and snap a numeric input string. Returns None on invalid."""
+    try:
+        v = float(value) if is_float else int(value)
+        v = max(min_val, min(max_val, v))
+        if is_float:
+            v = round(round(v / step) * step, 6)
+        else:
+            v = round(v / step) * step
+        return v
+    except (ValueError, TypeError):
+        return None
+
+
 class DatasetOption(BaseModel):
     """Model for a dataset in the selection list."""
     id: str = ""
@@ -545,35 +559,59 @@ class TrainingState(rx.State):
             pass
     
     async def set_epochs_input(self, value: str):
-        """Set epochs from text input. Clamp to 10-500, snap to step of 10."""
-        try:
-            v = int(value)
-            v = max(10, min(500, v))
-            v = round(v / 10) * 10  # Snap to nearest 10
+        """Set epochs from text input."""
+        v = _validate_numeric(value, 10, 500, 10)
+        if v is not None:
             self.epochs = v
             await self.save_training_prefs()
-        except (ValueError, TypeError):
-            pass  # Keep current value on invalid input
     
     async def increment_epochs(self):
-        """Increment epochs by 10, capped at 500."""
         self.epochs = min(500, self.epochs + 10)
         await self.save_training_prefs()
     
     async def decrement_epochs(self):
-        """Decrement epochs by 10, minimum 10."""
         self.epochs = max(10, self.epochs - 10)
         await self.save_training_prefs()
     
+    # --- SAM3 Epochs ---
     def set_sam3_max_epochs(self, value: list[int]):
-        """Set SAM3 max epochs from slider (live update, no save)."""
+        """Set SAM3 max epochs from slider (legacy)."""
         if value:
             self.sam3_max_epochs = value[0]
     
+    async def set_sam3_epochs_input(self, value: str):
+        v = _validate_numeric(value, 1, 20, 1)
+        if v is not None:
+            self.sam3_max_epochs = v
+            await self.save_training_prefs()
+    
+    async def increment_sam3_epochs(self):
+        self.sam3_max_epochs = min(20, self.sam3_max_epochs + 1)
+        await self.save_training_prefs()
+    
+    async def decrement_sam3_epochs(self):
+        self.sam3_max_epochs = max(1, self.sam3_max_epochs - 1)
+        await self.save_training_prefs()
+    
+    # --- SAM3 Patience ---
     def set_sam3_early_stop_patience(self, value: list[int]):
-        """Set SAM3 early stopping patience from slider."""
+        """Set SAM3 patience from slider (legacy)."""
         if value:
             self.sam3_early_stop_patience = value[0]
+    
+    async def set_sam3_patience_input(self, value: str):
+        v = _validate_numeric(value, 0, 5, 1)
+        if v is not None:
+            self.sam3_early_stop_patience = v
+            await self.save_training_prefs()
+    
+    async def increment_sam3_patience(self):
+        self.sam3_early_stop_patience = min(5, self.sam3_early_stop_patience + 1)
+        await self.save_training_prefs()
+    
+    async def decrement_sam3_patience(self):
+        self.sam3_early_stop_patience = max(0, self.sam3_early_stop_patience - 1)
+        await self.save_training_prefs()
     
     def set_sam3_num_images(self, value: str):
         """Set SAM3 num images from select (passes string)."""
@@ -613,66 +651,132 @@ class TrainingState(rx.State):
         """Toggle advanced settings visibility."""
         self.show_advanced_settings = not self.show_advanced_settings
     
+    # --- Patience ---
     def set_patience(self, value: list[int]):
-        """Set early stopping patience from slider (live update, no save)."""
+        """Set patience from slider (legacy)."""
         if value:
             self.patience = value[0]
+    
+    async def set_patience_input(self, value: str):
+        v = _validate_numeric(value, 5, 100, 5)
+        if v is not None:
+            self.patience = v
+            await self.save_training_prefs()
+    
+    async def increment_patience(self):
+        self.patience = min(100, self.patience + 5)
+        await self.save_training_prefs()
+    
+    async def decrement_patience(self):
+        self.patience = max(5, self.patience - 5)
+        await self.save_training_prefs()
     
     async def set_optimizer(self, value: str):
         """Set optimizer (auto/SGD/Adam/AdamW) and persist (select, not slider)."""
         self.optimizer = value
         await self.save_training_prefs()
     
+    # --- Initial LR (YOLO) ---
     def set_lr0(self, value: list[int]):
-        """Set initial learning rate from slider (live update, no save)."""
+        """Legacy slider handler."""
         if value:
-            # Map 0-100 to 0.001-0.1
             self.lr0 = round(0.001 + (value[0] / 100) * 0.099, 4)
     
+    async def set_lr0_input(self, value: str):
+        v = _validate_numeric(value, 0.001, 0.1, 0.001, is_float=True)
+        if v is not None:
+            self.lr0 = v
+            await self.save_training_prefs()
+    
+    async def increment_lr0(self):
+        self.lr0 = round(min(0.1, self.lr0 + 0.001), 4)
+        await self.save_training_prefs()
+    
+    async def decrement_lr0(self):
+        self.lr0 = round(max(0.001, self.lr0 - 0.001), 4)
+        await self.save_training_prefs()
+    
+    # --- Final LR (YOLO) ---
     def set_lrf(self, value: list[int]):
-        """Set final learning rate factor from slider (live update, no save)."""
+        """Legacy slider handler."""
         if value:
-            # Map 0-100 to 0.001-0.1
             self.lrf = round(0.001 + (value[0] / 100) * 0.099, 4)
     
+    async def set_lrf_input(self, value: str):
+        v = _validate_numeric(value, 0.001, 0.1, 0.001, is_float=True)
+        if v is not None:
+            self.lrf = v
+            await self.save_training_prefs()
+    
+    async def increment_lrf(self):
+        self.lrf = round(min(0.1, self.lrf + 0.001), 4)
+        await self.save_training_prefs()
+    
+    async def decrement_lrf(self):
+        self.lrf = round(max(0.001, self.lrf - 0.001), 4)
+        await self.save_training_prefs()
+    
+    # --- ConvNeXt LR ---
     def set_convnext_lr0_slider(self, value: list[int]):
-        """Set ConvNeXt LR from slider (live update, no save). Range: 1e-5 to 1e-3."""
+        """Legacy slider handler."""
         if value:
-            # Map 0-100 to 0.00001-0.001
             min_lr, max_lr = 0.00001, 0.001
             self.convnext_lr0 = round(min_lr + (value[0] / 100) * (max_lr - min_lr), 6)
 
     async def set_convnext_lr0_input(self, value: str):
-        """Set ConvNeXt LR from direct text input. Parses string, clamps to valid range."""
-        try:
-            lr = float(value)
-            lr = max(0.000001, min(0.01, lr))  # Clamp to reasonable range
-            self.convnext_lr0 = round(lr, 6)
+        v = _validate_numeric(value, 0.00001, 0.001, 0.00001, is_float=True)
+        if v is not None:
+            self.convnext_lr0 = v
             await self.save_training_prefs()
-        except (ValueError, TypeError):
-            pass  # Ignore invalid input
+    
+    async def increment_convnext_lr0(self):
+        self.convnext_lr0 = round(min(0.001, self.convnext_lr0 + 0.00001), 6)
+        await self.save_training_prefs()
+    
+    async def decrement_convnext_lr0(self):
+        self.convnext_lr0 = round(max(0.00001, self.convnext_lr0 - 0.00001), 6)
+        await self.save_training_prefs()
 
+    # --- ConvNeXt Weight Decay ---
     def set_convnext_weight_decay_slider(self, value: list[int]):
-        """Set ConvNeXt weight decay from slider (live update, no save). Range: 0.01 to 0.2."""
+        """Legacy slider handler."""
         if value:
-            # Map 0-100 to 0.01-0.2
             min_wd, max_wd = 0.01, 0.2
             self.convnext_weight_decay = round(min_wd + (value[0] / 100) * (max_wd - min_wd), 3)
     
     async def set_convnext_weight_decay_input(self, value: str):
-        """Set ConvNeXt weight decay from direct text input. Parses string, clamps to valid range."""
-        try:
-            wd = float(value)
-            wd = max(0.001, min(0.5, wd))  # Clamp to reasonable range
-            self.convnext_weight_decay = round(wd, 4)
+        v = _validate_numeric(value, 0.01, 0.2, 0.005, is_float=True)
+        if v is not None:
+            self.convnext_weight_decay = v
             await self.save_training_prefs()
-        except (ValueError, TypeError):
-            pass  # Ignore invalid input
     
+    async def increment_convnext_wd(self):
+        self.convnext_weight_decay = round(min(0.2, self.convnext_weight_decay + 0.005), 4)
+        await self.save_training_prefs()
+    
+    async def decrement_convnext_wd(self):
+        self.convnext_weight_decay = round(max(0.01, self.convnext_weight_decay - 0.005), 4)
+        await self.save_training_prefs()
+    
+    # --- Train/Val Ratio ---
     def set_train_split(self, value: list[int]):
-        """Set train/val split percentage from slider (live update, no save)."""
+        """Legacy slider handler."""
         if value:
             self.train_split_percentage = value[0]
+    
+    async def set_train_split_input(self, value: str):
+        v = _validate_numeric(value, 50, 95, 5)
+        if v is not None:
+            self.train_split_percentage = v
+            await self.save_training_prefs()
+    
+    async def increment_train_split(self):
+        self.train_split_percentage = min(95, self.train_split_percentage + 5)
+        await self.save_training_prefs()
+    
+    async def decrement_train_split(self):
+        self.train_split_percentage = max(50, self.train_split_percentage - 5)
+        await self.save_training_prefs()
     
     async def set_training_mode(self, value: str | list[str]):
         """Set training mode (detection/classification) and persist."""
@@ -712,32 +816,7 @@ class TrainingState(rx.State):
     # Computed properties
     # =========================================================================
     
-    @rx.var
-    def lr0_slider_value(self) -> int:
-        """Convert lr0 float (0.001-0.1) back to slider value (0-100)."""
-        # Reverse: (lr0 - 0.001) / 0.099 * 100
-        return int(round((self.lr0 - 0.001) / 0.099 * 100))
-    
-    @rx.var
-    def lrf_slider_value(self) -> int:
-        """Convert lrf float (0.001-0.1) back to slider value (0-100)."""
-        return int(round((self.lrf - 0.001) / 0.099 * 100))
-    
-    @rx.var
-    def convnext_lr0_slider_value(self) -> int:
-        """Convert convnext_lr0 to slider value (0-100) for range 0.00001-0.001."""
-        # ConvNeXt uses much lower LR range: 1e-5 to 1e-3
-        # Map 0.00001 -> 0, 0.001 -> 100
-        min_lr, max_lr = 0.00001, 0.001
-        normalized = (self.convnext_lr0 - min_lr) / (max_lr - min_lr)
-        return int(round(max(0, min(100, normalized * 100))))
 
-    @rx.var
-    def convnext_weight_decay_slider_value(self) -> int:
-        """Convert convnext_weight_decay to slider value (0-100) for range 0.01-0.2."""
-        min_wd, max_wd = 0.01, 0.2
-        normalized = (self.convnext_weight_decay - min_wd) / (max_wd - min_wd)
-        return int(round(max(0, min(100, normalized * 100))))
     
     @rx.var
     def effective_lr_display(self) -> float:
