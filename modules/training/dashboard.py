@@ -2502,6 +2502,12 @@ def dashboard_content() -> rx.Component:
                         unified_run_config_card(),
                         spacing="3",
                         width="100%",
+                        # Padding MUST be on the inner content, not on scroll_area root.
+                        # Radix ScrollArea.Viewport fills 100% of root; padding on root
+                        # only pushes the viewport inward but doesn't affect content clipping.
+                        # The overlay scrollbar sits on the viewport's right edge, so content
+                        # needs its own right margin to avoid being hidden behind it.
+                        style={"padding_right": "20px"},
                     ),
                     type="hover",
                     scrollbars="vertical",
@@ -2509,7 +2515,6 @@ def dashboard_content() -> rx.Component:
                         "width": "400px",
                         "min_width": "400px",
                         "height": "100%",
-                        "padding_right": "14px",  # Room for scrollbar overlay + card border-radius
                     },
                 ),
                 
