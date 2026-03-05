@@ -2097,6 +2097,7 @@ def unified_run_config_card() -> rx.Component:
                             on_change=TrainingState.set_training_mode,
                             size="1",
                             width="100%",
+                            style={"max_width": "100%", "overflow": "hidden"},
                         ),
                         # Epochs stepper (hidden for SAM3 which has its own)
                         rx.cond(
@@ -2156,6 +2157,7 @@ def unified_run_config_card() -> rx.Component:
                             on_change=TrainingState.set_training_mode,
                             size="1",
                             width="100%",
+                            style={"max_width": "100%", "overflow": "hidden"},
                         ),
                         # Epochs stepper (hidden for SAM3 which has its own)
                         rx.cond(
