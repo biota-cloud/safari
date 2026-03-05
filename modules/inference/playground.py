@@ -341,6 +341,19 @@ def model_dropdown() -> rx.Component:
                                                     rx.icon("check", size=12, style={"color": styles.ACCENT}),
                                                     rx.fragment(),
                                                 ),
+                                                # Remove from playground
+                                                rx.icon_button(
+                                                    rx.icon("trash-2", size=12),
+                                                    size="1",
+                                                    variant="ghost",
+                                                    color_scheme="red",
+                                                    on_click=[
+                                                        rx.stop_propagation,
+                                                        InferenceState.remove_model_from_playground(m["id"]),
+                                                    ],
+                                                    class_name="delete-model-btn",
+                                                    style={"opacity": "0", "transition": "opacity 0.15s ease"},
+                                                ),
                                                 width="100%",
                                                 align="center",
                                                 spacing="2",
@@ -418,7 +431,10 @@ def model_dropdown() -> rx.Component:
                                         border=f"1px solid {styles.BORDER}",
                                         cursor="pointer",
                                         width="100%",
-                                        _hover={"border_color": styles.ACCENT},
+                                        _hover={
+                                            "border_color": styles.ACCENT,
+                                            "& .delete-model-btn": {"opacity": "1"},
+                                        },
                                         on_click=InferenceState.select_model_by_name(m["name"]),
                                     ),
                                 ),

@@ -840,6 +840,29 @@ class InferenceState(rx.State):
             traceback.print_exc()
             self.models_by_project = []
             self.available_models = []
+    async def remove_model_from_playground(self, model_id: str):
+        """Remove a model from the playground (deletes DB record, preserves training run/weights)."""
+        from backend.supabase_client import delete_model
+        
+        try:
+            deleted = delete_model(model_id)
+            if deleted:
+                # If the removed model was selected, reset to default
+                deleted_name = deleted.get("name", "")
+                if self.selected_model_name == deleted_name:
+                    self.selected_model_name = "yolo11s.pt"
+                    self.selected_model_type = "builtin"
+                    self.selected_model_id = ""
+                    self.is_hybrid_mode = False
+                
+                # Reload models to refresh dropdown
+                yield InferenceState.load_models
+                yield rx.toast.success(f"Removed from Playground")
+            else:
+                yield rx.toast.error("Model not found")
+        except Exception as e:
+            print(f"Error removing model from playground: {e}")
+            yield rx.toast.error(f"Failed to remove: {str(e)}")
     
     async def load_user_results(self):
         """Load user's inference results for the results list."""

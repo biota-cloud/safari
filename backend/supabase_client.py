@@ -2548,12 +2548,13 @@ def get_inference_stats(user_id: str) -> dict:
 # =============================================================================
 
 def get_user_models(user_id: str) -> list[dict]:
-    """Get all saved models for user across all datasets."""
+    """Get playground models for user (excludes autolabel models with volume_path)."""
     supabase = get_supabase()
     result = (
         supabase.table("models")
         .select("*")
         .eq("user_id", user_id)
+        .is_("volume_path", "null")  # Exclude autolabel models (they have volume_path set)
         .order("created_at", desc=True)
         .execute()
     )
