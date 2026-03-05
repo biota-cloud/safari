@@ -610,7 +610,7 @@ def configuration_card() -> rx.Component:
                     TrainingState.training_mode,
                     # Detection config
                     ("detection", rx.vstack(
-                        # Epochs
+                        # Epochs — JS-level throttle (Reflex .throttle() broken for sliders)
                         rx.vstack(
                             rx.hstack(
                                 rx.text("Epochs", size="1", weight="medium", style={"color": styles.TEXT_PRIMARY}),
@@ -628,11 +628,45 @@ def configuration_card() -> rx.Component:
                                 min=10,
                                 max=500,
                                 step=10,
-                                on_change=lambda v: TrainingState.set_epochs(v).throttle(500),
+                                on_change=TrainingState.set_epochs,
                                 on_value_commit=TrainingState.save_training_prefs,
                                 style={"width": "100%"},
                                 size="1",
                             ),
+                            # JS: throttle set_epochs WS messages to max 1 per 500ms
+                            rx.script("""
+                                (function() {
+                                    if (window._epochsThrottleInstalled) return;
+                                    window._epochsThrottleInstalled = true;
+                                    var origSend = WebSocket.prototype.send;
+                                    var lastSent = 0;
+                                    var pending = null;
+                                    var timer = null;
+                                    WebSocket.prototype.send = function(data) {
+                                        if (typeof data === 'string' && data.indexOf('set_epochs') !== -1) {
+                                            var now = Date.now();
+                                            var ws = this;
+                                            if (now - lastSent < 500) {
+                                                pending = data;
+                                                if (!timer) {
+                                                    timer = setTimeout(function() {
+                                                        timer = null;
+                                                        if (pending) {
+                                                            lastSent = Date.now();
+                                                            origSend.call(ws, pending);
+                                                            pending = null;
+                                                        }
+                                                    }, 500 - (now - lastSent));
+                                                }
+                                                return;
+                                            }
+                                            lastSent = now;
+                                            pending = null;
+                                        }
+                                        return origSend.call(this, data);
+                                    };
+                                })();
+                            """),
                             spacing="1",
                         ),
                         # 2-column grid for dropdowns
