@@ -17,12 +17,12 @@ Expected JSON input:
         "project_id": "uuid",
         "dataset_ids": ["uuid1", "uuid2"],
         "image_urls": {"filename.jpg": "presigned_url", ...},
-        "label_urls": {"filename.txt": "presigned_url", ...},
+        "annotations": {"filename.txt": [{"class_id": 0, "x": 0.1, ...}, ...]},
         "classes": ["class1", "class2"],
         "config": {"epochs": 50, "model_size": "n", "batch_size": 16},
         "train_split_ratio": 0.8,
         "val_image_urls": null,
-        "val_label_urls": null,
+        "val_annotations": null,
         "base_weights_r2_path": null
     }
 
@@ -54,7 +54,8 @@ sys.path.insert(0, str(script_dir))
 
 # Import shared core functions
 from backend.core.train_detect_core import (
-    download_dataset,
+    generate_yolo_labels,
+    download_images,
     create_train_val_split,
     organize_train_val_structure,
     create_yolo_data_yaml,
@@ -77,12 +78,12 @@ def train_yolo(
     project_id: str,
     dataset_ids: list[str],
     image_urls: dict[str, str],
-    label_urls: dict[str, str],
+    annotations: dict[str, list[dict]],
     classes: list[str],
     config: dict,
     train_split_ratio: float = 0.8,
     val_image_urls: dict[str, str] = None,
-    val_label_urls: dict[str, str] = None,
+    val_annotations: dict[str, list[dict]] = None,
     base_weights_r2_path: str = None,
     parent_run_id: str = None,
 ) -> dict:
@@ -109,13 +110,17 @@ def train_yolo(
             print(f"Starting training run {run_id}")
             print(f"Config: {config}")
             print(f"Classes: {classes}")
-            print(f"Images: {len(image_urls)}, Labels: {len(label_urls)}")
+            print(f"Images: {len(image_urls)}, Labels: {len(annotations)}")
             
-            # === Step 1: Download dataset ===
-            print("Downloading images and labels...")
-            failed = download_dataset(image_urls, label_urls, download_dir, download_file)
+            # === Step 1: Download images and generate labels ===
+            print("Downloading images...")
+            failed = download_images(image_urls, download_dir, download_file)
             if failed:
-                print(f"Warning: Failed to download {len(failed)} files")
+                print(f"Warning: Failed to download {len(failed)} images")
+            
+            print("Generating YOLO labels from annotations...")
+            label_count = generate_yolo_labels(annotations, download_dir)
+            print(f"Generated {label_count} label files")
             
             # === Step 2: Create train/val split ===
             print("Creating train/val split...")
@@ -123,7 +128,7 @@ def train_yolo(
                 download_dir,
                 train_split_ratio,
                 val_image_urls,
-                val_label_urls,
+                val_annotations,
                 download_file,
             )
             

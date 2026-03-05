@@ -2030,9 +2030,9 @@ class TrainingState(rx.State):
 
             # 2. Aggregated data containers
             image_urls = {}  # Training images
-            label_urls = {}  # Training labels
+            annotations = {}  # Training labels (from Supabase annotations)
             val_image_urls = {}  # NEW: Validation images
-            val_label_urls = {}  # NEW: Validation labels
+            val_annotations = {}  # NEW: Validation annotations
             all_classes = set()
             dataset_name_list = []  # Snapshot of dataset names
             
@@ -2149,18 +2149,15 @@ class TrainingState(rx.State):
                                 print(f"[System] Error generating URL for {kf_path}: {e}")
                                 continue
                             
-                            # Always include label URL - empty files exist for unlabeled keyframes
+                            # Always include label from annotations
                             lbl_filename = f"{kf_filename.rsplit('.', 1)[0]}.txt"
-                            lbl_path = f"datasets/{dataset_id}/labels/{v['id']}_f{kf['frame_number']}.txt"
-                            try:
-                                lbl_url = r2.generate_presigned_url(lbl_path)
+                            kf_anns = kf.get("annotations", []) or []
+                            if kf_anns:
                                 # Route to correct dictionary based on dataset usage tag
                                 if dataset.usage_tag == "validation":
-                                    val_label_urls[lbl_filename] = lbl_url
+                                    val_annotations[lbl_filename] = kf_anns
                                 else:
-                                    label_urls[lbl_filename] = lbl_url
-                            except Exception as e:
-                                print(f"[System] Error generating label URL for {lbl_path}: {e}")
+                                    annotations[lbl_filename] = kf_anns
                 else:
                     # For images
                     images = get_dataset_images(dataset_id)
@@ -2174,16 +2171,15 @@ class TrainingState(rx.State):
                         else:
                             image_urls[img["filename"]] = img_url
                         
-                        # Label filename must match image filename
+                        # Label from annotations (Supabase JSONB is source of truth)
                         lbl_filename = f"{img['filename'].rsplit('.', 1)[0]}.txt"
-                        # Label in R2 is stored at datasets/{dataset_id}/labels/{image_id}.txt
-                        lbl_path = f"datasets/{dataset_id}/labels/{img['id']}.txt"
-                        lbl_url = r2.generate_presigned_url(lbl_path)
-                        # Route to correct dictionary based on dataset usage tag
-                        if dataset.usage_tag == "validation":
-                            val_label_urls[lbl_filename] = lbl_url
-                        else:
-                            label_urls[lbl_filename] = lbl_url
+                        img_anns = img.get("annotations", []) or []
+                        if img_anns:
+                            # Route to correct dictionary based on dataset usage tag
+                            if dataset.usage_tag == "validation":
+                                val_annotations[lbl_filename] = img_anns
+                            else:
+                                annotations[lbl_filename] = img_anns
 
             # 5. Dispatch training job (routes to Modal or Local GPU)
             try:
@@ -2199,12 +2195,12 @@ class TrainingState(rx.State):
                     run_id=run_id,
                     dataset_ids=selected_ids,
                     image_urls=image_urls,
-                    label_urls=label_urls,
+                    annotations=annotations,
                     classes=sorted(list(all_classes)),
                     config=config,
                     train_split_ratio=train_split_percentage / 100,
                     val_image_urls=val_image_urls if val_dataset_ids else None,
-                    val_label_urls=val_label_urls if val_dataset_ids else None,
+                    val_annotations=val_annotations if val_dataset_ids else None,
                     base_weights_r2_path=base_weights_r2_path,
                     parent_run_id=parent_run_id,
                     # Action-level target selection

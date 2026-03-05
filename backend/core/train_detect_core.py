@@ -5,7 +5,8 @@ Pure training logic without environment-specific code (Modal/SSH).
 Used by both train_job.py (Modal) and remote_train.py (Local GPU).
 
 Functions:
-- download_dataset: Parallel download of images and labels
+- generate_yolo_labels: Generate YOLO .txt labels from Supabase annotations
+- download_images: Parallel download of images
 - create_train_val_split: Split files into train/val sets
 - create_yolo_data_yaml: Generate data.yaml for YOLO
 - run_yolo_detection_training: Execute YOLO training
@@ -19,19 +20,61 @@ from pathlib import Path
 from typing import Callable, Optional
 
 
-def download_dataset(
+def generate_yolo_labels(
+    annotations: dict[str, list[dict]],
+    output_dir: Path,
+) -> int:
+    """
+    Generate YOLO .txt label files from Supabase annotations.
+    
+    Converts annotations from Supabase JSONB format to YOLO format:
+    class_id x_center y_center width height (normalized 0-1)
+    
+    Args:
+        annotations: {label_filename: [{class_id, x, y, width, height}, ...]}
+                     Keys are .txt filenames (e.g. "image1.txt")
+        output_dir: Base directory — labels written to output_dir/labels/
+    
+    Returns:
+        Number of label files written
+    """
+    labels_dir = output_dir / "labels"
+    labels_dir.mkdir(parents=True, exist_ok=True)
+    
+    count = 0
+    for filename, anns in annotations.items():
+        lines = []
+        for ann in anns:
+            class_id = ann.get("class_id", 0)
+            x = ann.get("x", 0)
+            y = ann.get("y", 0)
+            w = ann.get("width", 0)
+            h = ann.get("height", 0)
+            
+            # Convert corner coords to center coords (YOLO format)
+            x_center = x + w / 2
+            y_center = y + h / 2
+            
+            lines.append(f"{class_id} {x_center:.6f} {y_center:.6f} {w:.6f} {h:.6f}")
+        
+        label_path = labels_dir / filename
+        label_path.write_text("\n".join(lines))
+        count += 1
+    
+    return count
+
+
+def download_images(
     image_urls: dict[str, str],
-    label_urls: dict[str, str],
     download_dir: Path,
     download_fn: Callable[[str, Path], bool],
     max_workers: int = 10,
 ) -> list[str]:
     """
-    Download images and labels in parallel.
+    Download images in parallel.
     
     Args:
         image_urls: {filename: url} for images
-        label_urls: {filename: url} for labels
         download_dir: Base directory to download into
         download_fn: Function(url, dest_path) -> bool
         max_workers: Number of parallel downloads
@@ -40,22 +83,12 @@ def download_dataset(
         List of failed filenames
     """
     (download_dir / "images").mkdir(parents=True, exist_ok=True)
-    (download_dir / "labels").mkdir(parents=True, exist_ok=True)
-    
-    all_downloads = []
-    for filename, url in image_urls.items():
-        dest = download_dir / "images" / filename
-        all_downloads.append((url, dest, filename))
-    
-    for filename, url in label_urls.items():
-        dest = download_dir / "labels" / filename
-        all_downloads.append((url, dest, filename))
     
     failed_downloads = []
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = {
-            executor.submit(download_fn, url, dest): filename
-            for url, dest, filename in all_downloads
+            executor.submit(download_fn, url, download_dir / "images" / filename): filename
+            for filename, url in image_urls.items()
         }
         for future in as_completed(futures):
             filename = futures[future]
@@ -69,7 +102,7 @@ def create_train_val_split(
     download_dir: Path,
     train_split_ratio: float = 0.8,
     val_image_urls: Optional[dict[str, str]] = None,
-    val_label_urls: Optional[dict[str, str]] = None,
+    val_annotations: Optional[dict[str, list[dict]]] = None,
     download_fn: Optional[Callable[[str, Path], bool]] = None,
 ) -> tuple[list[Path], list[Path], Optional[Path]]:
     """
@@ -79,8 +112,8 @@ def create_train_val_split(
         download_dir: Directory containing images/labels subdirs
         train_split_ratio: Ratio for random split (if no explicit val)
         val_image_urls: Optional explicit validation image URLs
-        val_label_urls: Optional explicit validation label URLs
-        download_fn: Function to download validation files (required if val_*_urls provided)
+        val_annotations: Optional explicit validation annotations
+        download_fn: Function to download validation images (required if val_image_urls provided)
     
     Returns:
         (train_images, val_images, val_download_dir or None)
@@ -94,15 +127,14 @@ def create_train_val_split(
         val_download_dir = download_dir.parent / "val_downloads"
         val_download_dir.mkdir()
         (val_download_dir / "images").mkdir()
-        (val_download_dir / "labels").mkdir()
         
         for filename, url in val_image_urls.items():
             dest = val_download_dir / "images" / filename
             download_fn(url, dest)
         
-        for filename, url in (val_label_urls or {}).items():
-            dest = val_download_dir / "labels" / filename
-            download_fn(url, dest)
+        # Generate validation labels from annotations
+        if val_annotations:
+            generate_yolo_labels(val_annotations, val_download_dir)
         
         train_images = list((download_dir / "images").glob("*"))
         val_images = list((val_download_dir / "images").glob("*"))
