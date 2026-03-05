@@ -103,6 +103,7 @@ def numeric_stepper(
             ),
             # Text input
             rx.input(
+                key=value.to(str),
                 default_value=value.to(str),
                 on_blur=on_blur_handler,
                 on_key_down=rx.call_script("if (event.key === 'Enter') event.target.blur()"),
@@ -796,6 +797,7 @@ def configuration_card() -> rx.Component:
                     rx.cond(
                         TrainingState.show_advanced_settings,
                         rx.vstack(
+                            # All steppers stacked vertically (SAM3 pattern)
                             # Patience
                             numeric_stepper(
                                 label="Patience",
@@ -804,25 +806,10 @@ def configuration_card() -> rx.Component:
                                 on_increment=TrainingState.increment_patience,
                                 on_decrement=TrainingState.decrement_patience,
                             ),
-                            # Optimizer
-                            rx.vstack(
-                                rx.text("Optimizer", size="1", style={"color": styles.TEXT_SECONDARY}),
-                                rx.cond(
-                                    (TrainingState.training_mode == "classification") & (TrainingState.classifier_backbone == "convnext"),
-                                    rx.text("AdamW", size="2", weight="medium", style={"color": styles.TEXT_PRIMARY, "opacity": "0.6", "padding": "4px 0"}),
-                                    rx.select(
-                                        ["auto", "SGD", "Adam", "AdamW"],
-                                        value=TrainingState.optimizer,
-                                        on_change=TrainingState.set_optimizer,
-                                        size="1",
-                                    ),
-                                ),
-                                spacing="1",
-                            ),
                             # Learning Rate - conditional based on backbone
                             rx.cond(
                                 (TrainingState.training_mode == "classification") & (TrainingState.classifier_backbone == "convnext"),
-                                # ConvNeXt: LR + Weight Decay stacked vertically
+                                # ConvNeXt: LR + Weight Decay
                                 rx.vstack(
                                     numeric_stepper(
                                         label="ConvNeXt LR",
@@ -846,35 +833,35 @@ def configuration_card() -> rx.Component:
                                         on_blur_handler=TrainingState.set_convnext_weight_decay_input,
                                         on_increment=TrainingState.increment_convnext_wd,
                                         on_decrement=TrainingState.decrement_convnext_wd,
-                                        tooltip="AdamW weight decay for regularization. Higher values prevent overfitting but may reduce model capacity. Default: 0.05",
+                                        tooltip="AdamW weight decay for regularization. Default: 0.05",
                                         display_width="72px",
                                     ),
                                     spacing="2",
                                     width="100%",
                                 ),
-                                # YOLO/Detection: standard LR range (0.001 to 0.1)
-                                numeric_stepper(
-                                    label="Initial LR",
-                                    value=TrainingState.lr0,
-                                    on_blur_handler=TrainingState.set_lr0_input,
-                                    on_increment=TrainingState.increment_lr0,
-                                    on_decrement=TrainingState.decrement_lr0,
-                                    display_width="72px",
+                                # YOLO: LR + Final LR
+                                rx.vstack(
+                                    numeric_stepper(
+                                        label="Initial LR",
+                                        value=TrainingState.lr0,
+                                        on_blur_handler=TrainingState.set_lr0_input,
+                                        on_increment=TrainingState.increment_lr0,
+                                        on_decrement=TrainingState.decrement_lr0,
+                                        display_width="72px",
+                                    ),
+                                    numeric_stepper(
+                                        label="Final LR",
+                                        value=TrainingState.lrf,
+                                        on_blur_handler=TrainingState.set_lrf_input,
+                                        on_increment=TrainingState.increment_lrf,
+                                        on_decrement=TrainingState.decrement_lrf,
+                                        display_width="72px",
+                                    ),
+                                    spacing="2",
+                                    width="100%",
                                 ),
                             ),
-                            # Final LR Factor (lrf) - only for YOLO, not used by ConvNeXt
-                            rx.cond(
-                                ~((TrainingState.training_mode == "classification") & (TrainingState.classifier_backbone == "convnext")),
-                                numeric_stepper(
-                                    label="Final LR Factor",
-                                    value=TrainingState.lrf,
-                                    on_blur_handler=TrainingState.set_lrf_input,
-                                    on_increment=TrainingState.increment_lrf,
-                                    on_decrement=TrainingState.decrement_lrf,
-                                    display_width="72px",
-                                ),
-                            ),
-                            # Train/Val Ratio (conditional)
+                            # Train/Val Ratio
                             rx.cond(
                                 ~TrainingState.has_explicit_validation_datasets,
                                 numeric_stepper(
@@ -886,6 +873,21 @@ def configuration_card() -> rx.Component:
                                     tooltip="Percentage of images used for training vs validation",
                                     display_width="56px",
                                 ),
+                            ),
+                            # Optimizer dropdown (below steppers, like SAM3 selects)
+                            rx.vstack(
+                                rx.text("Optimizer", size="1", style={"color": styles.TEXT_SECONDARY}),
+                                rx.cond(
+                                    (TrainingState.training_mode == "classification") & (TrainingState.classifier_backbone == "convnext"),
+                                    rx.text("AdamW", size="2", weight="medium", style={"color": styles.TEXT_PRIMARY, "opacity": "0.6", "padding": "4px 0"}),
+                                    rx.select(
+                                        ["auto", "SGD", "Adam", "AdamW"],
+                                        value=TrainingState.optimizer,
+                                        on_change=TrainingState.set_optimizer,
+                                        size="1",
+                                    ),
+                                ),
+                                spacing="1",
                             ),
                             spacing="2",
                             width="100%",
@@ -2278,70 +2280,50 @@ def unified_run_config_card() -> rx.Component:
                                     align="center",
                                     style={"margin": "12px 0 8px"},
                                 ),
-                                # Row 1: Patience + Optimizer
-                                rx.grid(
-                                    # Patience
-                                    numeric_stepper(
-                                        label="Patience",
-                                        value=TrainingState.patience,
-                                        on_blur_handler=TrainingState.set_patience_input,
-                                        on_increment=TrainingState.increment_patience,
-                                        on_decrement=TrainingState.decrement_patience,
-                                    ),
-                                    # Optimizer
+                                # All steppers stacked vertically (SAM3 pattern)
+                                # Patience
+                                numeric_stepper(
+                                    label="Patience",
+                                    value=TrainingState.patience,
+                                    on_blur_handler=TrainingState.set_patience_input,
+                                    on_increment=TrainingState.increment_patience,
+                                    on_decrement=TrainingState.decrement_patience,
+                                ),
+                                # Learning Rate - conditional based on backbone
+                                rx.cond(
+                                    (TrainingState.training_mode == "classification") & (TrainingState.classifier_backbone == "convnext"),
+                                    # ConvNeXt: LR + Weight Decay
                                     rx.vstack(
-                                        rx.text("Optimizer", size="1", style={"color": styles.TEXT_SECONDARY}),
-                                        rx.cond(
-                                            (TrainingState.training_mode == "classification") & (TrainingState.classifier_backbone == "convnext"),
-                                            rx.text("AdamW", size="2", weight="medium", style={"color": styles.TEXT_PRIMARY, "opacity": "0.6", "padding": "4px 0"}),
-                                            rx.select(
-                                                ["auto", "SGD", "Adam", "AdamW"],
-                                                value=TrainingState.optimizer,
-                                                on_change=TrainingState.set_optimizer,
-                                                size="1",
+                                        numeric_stepper(
+                                            label="ConvNeXt LR",
+                                            value=TrainingState.convnext_lr0,
+                                            on_blur_handler=TrainingState.set_convnext_lr0_input,
+                                            on_increment=TrainingState.increment_convnext_lr0,
+                                            on_decrement=TrainingState.decrement_convnext_lr0,
+                                            tooltip=(
+                                                "Recommended LR by model size:\n"
+                                                "• Tiny:   1e-4  – 5e-5\n"
+                                                "• Small: 1e-4  – 5e-5\n"
+                                                "• Base:  5e-5  – 1e-5\n"
+                                                "• Large: 2e-5  – 5e-6\n"
+                                                "Lower LR = gentler fine-tuning"
                                             ),
+                                            display_width="80px",
                                         ),
-                                        spacing="1",
+                                        numeric_stepper(
+                                            label="Weight Decay",
+                                            value=TrainingState.convnext_weight_decay,
+                                            on_blur_handler=TrainingState.set_convnext_weight_decay_input,
+                                            on_increment=TrainingState.increment_convnext_wd,
+                                            on_decrement=TrainingState.decrement_convnext_wd,
+                                            tooltip="AdamW weight decay for regularization. Default: 0.05",
+                                            display_width="72px",
+                                        ),
+                                        spacing="2",
                                         width="100%",
                                     ),
-                                    columns="2",
-                                    spacing="3",
-                                    width="100%",
-                                ),
-                                    # Initial Learning Rate (backbone-aware)
-                                    rx.cond(
-                                        (TrainingState.training_mode == "classification") & (TrainingState.classifier_backbone == "convnext"),
-                                        # ConvNeXt LR + Weight Decay stacked
-                                        rx.vstack(
-                                            numeric_stepper(
-                                                label="ConvNeXt LR",
-                                                value=TrainingState.convnext_lr0,
-                                                on_blur_handler=TrainingState.set_convnext_lr0_input,
-                                                on_increment=TrainingState.increment_convnext_lr0,
-                                                on_decrement=TrainingState.decrement_convnext_lr0,
-                                                tooltip=(
-                                                    "Recommended LR by model size:\n"
-                                                    "• Tiny:   1e-4  – 5e-5\n"
-                                                    "• Small: 1e-4  – 5e-5\n"
-                                                    "• Base:  5e-5  – 1e-5\n"
-                                                    "• Large: 2e-5  – 5e-6\n"
-                                                    "Lower LR = gentler fine-tuning"
-                                                ),
-                                                display_width="80px",
-                                            ),
-                                            numeric_stepper(
-                                                label="Weight Decay",
-                                                value=TrainingState.convnext_weight_decay,
-                                                on_blur_handler=TrainingState.set_convnext_weight_decay_input,
-                                                on_increment=TrainingState.increment_convnext_wd,
-                                                on_decrement=TrainingState.decrement_convnext_wd,
-                                                tooltip="AdamW weight decay for regularization. Default: 0.05",
-                                                display_width="72px",
-                                            ),
-                                            spacing="2",
-                                            width="100%",
-                                        ),
-                                        # YOLO LR
+                                    # YOLO: LR + Final LR
+                                    rx.vstack(
                                         numeric_stepper(
                                             label="Initial LR",
                                             value=TrainingState.lr0,
@@ -2350,10 +2332,6 @@ def unified_run_config_card() -> rx.Component:
                                             on_decrement=TrainingState.decrement_lr0,
                                             display_width="72px",
                                         ),
-                                    ),
-                                    # Final LR Factor - only for YOLO
-                                    rx.cond(
-                                        ~((TrainingState.training_mode == "classification") & (TrainingState.classifier_backbone == "convnext")),
                                         numeric_stepper(
                                             label="Final LR",
                                             value=TrainingState.lrf,
@@ -2362,7 +2340,10 @@ def unified_run_config_card() -> rx.Component:
                                             on_decrement=TrainingState.decrement_lrf,
                                             display_width="72px",
                                         ),
+                                        spacing="2",
+                                        width="100%",
                                     ),
+                                ),
                                 # Train/Val Ratio
                                 rx.cond(
                                     ~TrainingState.has_explicit_validation_datasets,
@@ -2375,6 +2356,21 @@ def unified_run_config_card() -> rx.Component:
                                         tooltip="Percentage of images used for training vs validation",
                                         display_width="56px",
                                     ),
+                                ),
+                                # Optimizer dropdown (below steppers)
+                                rx.vstack(
+                                    rx.text("Optimizer", size="1", style={"color": styles.TEXT_SECONDARY}),
+                                    rx.cond(
+                                        (TrainingState.training_mode == "classification") & (TrainingState.classifier_backbone == "convnext"),
+                                        rx.text("AdamW", size="2", weight="medium", style={"color": styles.TEXT_PRIMARY, "opacity": "0.6", "padding": "4px 0"}),
+                                        rx.select(
+                                            ["auto", "SGD", "Adam", "AdamW"],
+                                            value=TrainingState.optimizer,
+                                            on_change=TrainingState.set_optimizer,
+                                            size="1",
+                                        ),
+                                    ),
+                                    spacing="1",
                                 ),
                                 spacing="4",
                                 width="100%",
@@ -2514,7 +2510,7 @@ def dashboard_content() -> rx.Component:
                         "width": "400px",
                         "min_width": "400px",
                         "height": "100%",
-                        "overflow_x": "visible",  # Allow dropdowns to extend
+                        "overflow_x": "hidden",  # Prevent right-side truncation
                     },
                 ),
                 
