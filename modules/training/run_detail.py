@@ -555,7 +555,7 @@ def accuracy_chart() -> rx.Component:
         rx.recharts.legend(),
         rx.recharts.graphing_tooltip(),
         data=TrainingState.results_csv_data,
-        width="100%",
+        width=500,
         height=250,
     )
 
@@ -586,7 +586,7 @@ def classification_loss_chart() -> rx.Component:
         rx.recharts.legend(),
         rx.recharts.graphing_tooltip(),
         data=TrainingState.results_csv_data,
-        width="100%",
+        width=500,
         height=250,
     )
 
@@ -638,53 +638,6 @@ def classification_charts_section() -> rx.Component:
     )
 
 
-def loss_chart() -> rx.Component:
-    """Chart showing loss curves over epochs."""
-    return rx.box(
-        rx.vstack(
-            rx.text("Loss Curves", size="2", weight="medium", style={"color": styles.TEXT_PRIMARY}),
-            rx.recharts.line_chart(
-                rx.recharts.line(
-                    data_key="train/box_loss",
-                    stroke=styles.ACCENT,
-                    name="Box Loss",
-                    dot=False,
-                ),
-                rx.recharts.line(
-                    data_key="train/cls_loss",
-                    stroke=styles.SUCCESS,
-                    name="Class Loss",
-                    dot=False,
-                ),
-                rx.recharts.line(
-                    data_key="train/dfl_loss",
-                    stroke=styles.WARNING,
-                    name="DFL Loss",
-                    dot=False,
-                ),
-                rx.recharts.x_axis(
-                    data_key="epoch",
-                    stroke=styles.TEXT_SECONDARY,
-                    type="number",
-                    domain=["dataMin", "dataMax"],
-                ),
-                rx.recharts.y_axis(stroke=styles.TEXT_SECONDARY),
-                rx.recharts.legend(),
-                rx.recharts.graphing_tooltip(),
-                data=TrainingState.results_csv_data,
-                width="100%",
-                height=250,
-            ),
-            spacing="2",
-            width="100%",
-        ),
-        style={
-            "padding": styles.SPACING_4,
-            "background": styles.BG_SECONDARY,
-            "border": f"1px solid {styles.BORDER}",
-            "border_radius": styles.RADIUS_LG,
-        },
-    )
 
 
 def map_chart() -> rx.Component:
