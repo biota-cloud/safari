@@ -610,7 +610,7 @@ def configuration_card() -> rx.Component:
                     TrainingState.training_mode,
                     # Detection config
                     ("detection", rx.vstack(
-                        # Epochs
+                        # Epochs — uncontrolled slider (thumb moves freely, zero WS during drag)
                         rx.vstack(
                             rx.hstack(
                                 rx.text("Epochs", size="1", weight="medium", style={"color": styles.TEXT_PRIMARY}),
@@ -620,18 +620,19 @@ def configuration_card() -> rx.Component:
                                     size="1",
                                     weight="bold",
                                     style={"color": styles.ACCENT, "font_family": styles.FONT_FAMILY_MONO},
+                                    id="epochs-value-display",
                                 ),
                                 width="100%",
                             ),
                             rx.slider(
-                                value=[TrainingState.epochs],
+                                default_value=[TrainingState.epochs],
                                 min=10,
                                 max=500,
                                 step=10,
-                                on_change=TrainingState.set_epochs,
-                                on_value_commit=TrainingState.save_training_prefs,
+                                on_value_commit=TrainingState.set_epochs_commit,
                                 style={"width": "100%"},
                                 size="1",
+                                id="epochs-slider",
                             ),
                             spacing="1",
                         ),

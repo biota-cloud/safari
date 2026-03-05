@@ -1,25 +1,28 @@
 /**
- * Global WebSocket throttle for Reflex slider events.
+ * Global slider performance optimizations for Reflex apps.
  *
- * Problem: Radix slider on_change fires per pixel (~100+ events per drag).
- * On high-latency connections, each event = 1 WS round-trip (~170ms),
- * causing massive pileup and slider lag.
+ * 1. WS Throttle: Limits slider on_change WS messages to max 1 per 300ms
+ *    (for sliders that still use controlled value + on_change).
  *
- * Solution: Intercept WebSocket.send and throttle slider events to
- * max 1 per 300ms, keeping only the latest pending value.
- * Guaranteed to fire on release via the pending flush.
+ * 2. Value Display Observer: Updates displayed value text during drag
+ *    for uncontrolled sliders (default_value + on_value_commit only).
+ *    Zero WS traffic — reads aria-valuenow from the slider thumb.
  *
- * This runs as a global asset, before any Reflex WS connections are made.
+ * Loaded as the first head_component to patch WebSocket.prototype.send
+ * before any Reflex WS connections are established.
  */
+
+// ============================================================
+// 1. WebSocket Throttle for controlled sliders
+// ============================================================
 (function () {
     if (window._sliderThrottleInstalled) return;
     window._sliderThrottleInstalled = true;
 
     var origSend = WebSocket.prototype.send;
 
-    // Throttle config: event name substring -> { lastSent, pending, timer, limit }
+    // Throttle config: event handler name -> settings
     var throttled = {
-        set_epochs: { lastSent: 0, pending: null, timer: null, limit: 300 },
         set_patience: { lastSent: 0, pending: null, timer: null, limit: 300 },
         set_lr0: { lastSent: 0, pending: null, timer: null, limit: 300 },
         set_lrf: { lastSent: 0, pending: null, timer: null, limit: 300 },
@@ -57,7 +60,6 @@
                     var elapsed = now - cfg.lastSent;
 
                     if (elapsed < cfg.limit) {
-                        // Too soon — store as pending, schedule flush
                         cfg.pending = data;
                         if (!cfg.timer) {
                             cfg.timer = setTimeout(function () {
@@ -69,17 +71,61 @@
                                 }
                             }, cfg.limit - elapsed);
                         }
-                        return; // Drop this message
+                        return;
                     }
 
-                    // Enough time passed — send immediately
                     cfg.lastSent = now;
                     cfg.pending = null;
                     return origSend.call(ws, data);
                 }
             }
         }
-        // Not a throttled event — pass through
         return origSend.call(this, data);
     };
+})();
+
+// ============================================================
+// 2. MutationObserver for uncontrolled slider value display
+// ============================================================
+(function () {
+    // Map: slider container ID -> display element ID
+    var sliderDisplayMap = {
+        "epochs-slider": "epochs-value-display",
+    };
+
+    function installObservers() {
+        var keys = Object.keys(sliderDisplayMap);
+        for (var i = 0; i < keys.length; i++) {
+            var sliderId = keys[i];
+            var displayId = sliderDisplayMap[sliderId];
+            var container = document.getElementById(sliderId);
+            var display = document.getElementById(displayId);
+
+            if (!container || !display || container.dataset.observed) continue;
+
+            var thumb = container.querySelector('[role="slider"]');
+            if (!thumb) continue;
+
+            container.dataset.observed = "true";
+
+            // Create observer closure
+            (function (t, d) {
+                new MutationObserver(function (mutations) {
+                    for (var j = 0; j < mutations.length; j++) {
+                        if (mutations[j].attributeName === "aria-valuenow") {
+                            d.textContent = t.getAttribute("aria-valuenow");
+                        }
+                    }
+                }).observe(t, { attributes: true, attributeFilter: ["aria-valuenow"] });
+            })(thumb, display);
+        }
+    }
+
+    // Poll for slider elements (they may render after page load)
+    var attempts = 0;
+    var iv = setInterval(function () {
+        installObservers();
+        attempts++;
+        if (attempts > 60) clearInterval(iv); // Stop after 30s
+    }, 500);
 })();
