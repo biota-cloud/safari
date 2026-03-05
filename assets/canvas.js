@@ -446,8 +446,11 @@
      * Public API: Render annotations from Python
      * @param {Array} a - List of annotation objects
      */
+    let _lastRenderAnnotationsTime = 0;  // Track when Python last sent annotations
+
     window.renderAnnotations = function (a) {
         annotations = a || [];
+        _lastRenderAnnotationsTime = performance.now();
         drawCanvas();
     };
 
@@ -2607,11 +2610,13 @@
     let _seekDebounceTimer = null;
     let _isSeeking = false;
     let _pendingSeekFrame = null;
+    let _seekStartTime = 0;  // Track when the current seek cycle began
 
     window.seekToFrame = function (frame, fps) {
         if (!sourceVideo) return;
 
         videoFps = fps || 30;
+        _seekStartTime = performance.now();
 
         // Debounce rapid slider drags: only process the last seek within 50ms
         _pendingSeekFrame = frame;
@@ -2640,12 +2645,19 @@
             _isSeeking = false;
             drawVideoFrameToCanvas();
 
-            // Render annotations from JS cache (Phase 1 - zero WS traffic)
-            const cachedAnns = videoAnnotationCache[frame];
-            annotations = cachedAnns || [];
-            if (annotations.length > 0) {
-                drawCanvas();
+            // Render annotations: prefer Python-sent data over JS cache.
+            // If renderAnnotations() was called AFTER seekToFrame() started
+            // (i.e. Python sent both seek + annotations in one batch),
+            // keep those authoritative annotations instead of the JS cache
+            // which may not have them yet.
+            if (_lastRenderAnnotationsTime < _seekStartTime) {
+                // No Python renderAnnotations during this seek cycle
+                // → use JS cache (standard playback / slider scrub path)
+                const cachedAnns = videoAnnotationCache[frame];
+                annotations = cachedAnns || [];
             }
+            // Always redraw: either with Python-sent or cached annotations
+            drawCanvas();
 
             // If another seek was queued while we were seeking, execute it
             if (_pendingSeekFrame !== null && _pendingSeekFrame !== frame) {
