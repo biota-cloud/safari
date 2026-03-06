@@ -146,6 +146,7 @@ def hybrid_inference(
     confidence_threshold: float = 0.25,
     classifier_confidence: float = 0.5,  # Minimum classifier confidence to keep detection
     sam3_model_path: str = "/models/sam3.pt",  # Volume path to SAM3 model (supports fine-tuned)
+    sam3_imgsz: int = 644,  # SAM3 inference resolution (stride-14 aligned)
 ) -> dict:
     """
     Run hybrid SAM3 + Classifier inference on a single image.
@@ -167,6 +168,7 @@ def hybrid_inference(
         classifier_confidence=classifier_confidence,
         # Modal-specific configuration:
         sam3_model_path=sam3_model_path,
+        sam3_imgsz=sam3_imgsz,
         download_classifier_fn=download_classifier_model,
     )
 
@@ -192,6 +194,7 @@ def hybrid_inference_batch(
     confidence_threshold: float = 0.25,
     classifier_confidence: float = 0.5,
     sam3_model_path: str = "/models/sam3.pt",  # Volume path to SAM3 model (supports fine-tuned)
+    sam3_imgsz: int = 644,  # SAM3 inference resolution (stride-14 aligned)
 ) -> list[dict]:
     """
     Run hybrid SAM3 + Classifier inference on multiple images sequentially.
@@ -212,6 +215,7 @@ def hybrid_inference_batch(
         classifier_confidence=classifier_confidence,
         # Modal-specific configuration:
         sam3_model_path=sam3_model_path,
+        sam3_imgsz=sam3_imgsz,
         download_classifier_fn=download_classifier_model,
     )
 
@@ -241,7 +245,7 @@ def hybrid_inference_video(
     end_time: float | None = None,
     frame_skip: int = 1,
     classify_top_k: int = 3,
-    sam3_imgsz: int = 640,
+    sam3_imgsz: int = 644,
     result_id: str | None = None,  # For progress updates to Supabase
     sam3_model_path: str = "/models/sam3.pt",  # Volume path to SAM3 model (supports fine-tuned)
 ) -> dict:

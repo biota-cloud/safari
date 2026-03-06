@@ -2637,6 +2637,11 @@
         const time = frame / videoFps;
         _isSeeking = true;
 
+        // Immediately clear stale annotations for this frame
+        // (prevents ghost annotations during rapid scrubbing)
+        const immediateCachedAnns = videoAnnotationCache[frame];
+        annotations = immediateCachedAnns || [];
+
         sourceVideo.currentTime = time;
 
         // Use a one-shot event listener to avoid clobbering

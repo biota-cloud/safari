@@ -1162,44 +1162,10 @@ def autolabel_modal() -> rx.Component:
                     rx.tabs.list(
                         rx.tabs.trigger("SAM3", value="sam3"),
                         rx.tabs.trigger("YOLO Model", value="yolo"),
-                        rx.tabs.trigger(
-                            rx.hstack(
-                                rx.text("SAM3 Rect", size="1"),
-                                rx.badge("Soon", size="1", variant="outline"),
-                                spacing="1",
-                            ),
-                            value="sam3_rect",
-                            disabled=True,
-                        ),
-                        rx.tabs.trigger(
-                            rx.hstack(
-                                rx.text("Video Track", size="1"),
-                                rx.badge("Soon", size="1", variant="outline"),
-                                spacing="1",
-                            ),
-                            value="video_track",
-                            disabled=True,
-                        ),
                         size="1",
                     ),
                     rx.tabs.content(sam3_panel(), value="sam3", padding_top="16px"),
                     rx.tabs.content(yolo_panel(), value="yolo", padding_top="16px"),
-                    rx.tabs.content(
-                        future_tab_placeholder(
-                            "scan-search",
-                            "SAM3 Positive Rect Detection",
-                            "Draw a bounding box to detect similar objects."
-                        ),
-                        value="sam3_rect",
-                    ),
-                    rx.tabs.content(
-                        future_tab_placeholder(
-                            "film",
-                            "Video Object Tracking",
-                            "Track objects across video frames automatically."
-                        ),
-                        value="video_track",
-                    ),
                     value=LabelingState.autolabel_mode,
                     on_change=LabelingState.set_autolabel_mode,
                     width="100%",

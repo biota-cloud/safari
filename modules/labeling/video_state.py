@@ -152,7 +152,7 @@ class VideoLabelingState(rx.State):
     is_dirty: bool = False
     
     # Tool state
-    current_tool: str = "select"  # "select" or "draw"
+    current_tool: str = "select"  # "select", "draw", or "mask_edit"
     is_drawing: bool = False
     
     # Class management
@@ -2579,6 +2579,33 @@ class VideoLabelingState(rx.State):
         self.current_tool = tool
         self.is_drawing = False
         return rx.call_script(f"window.setTool && window.setTool('{tool}')")
+
+    @rx.var
+    def selected_annotation_has_mask(self) -> bool:
+        """Check if the currently selected annotation has a mask_polygon."""
+        if not self.selected_annotation_id:
+            return False
+        for ann in self.annotations:
+            if ann.get("id") == self.selected_annotation_id:
+                polygon = ann.get("mask_polygon")
+                return polygon is not None and len(polygon) >= 3
+        return False
+
+    async def delete_mask_from_annotation(self):
+        """Remove mask_polygon from the currently selected annotation (keep bbox)."""
+        if not self.selected_annotation_id:
+            return
+
+        for i, ann in enumerate(self.annotations):
+            if ann.get("id") == self.selected_annotation_id:
+                if "mask_polygon" in ann:
+                    del self.annotations[i]["mask_polygon"]
+                    print(f"[VideoLabeling] Deleted mask from annotation: {self.selected_annotation_id}")
+
+                    self.is_dirty = True
+                    yield self.push_annotations_to_js()
+                    await self.save_annotations()
+                break
     
     async def handle_new_annotation(self, data_json: str):
         """Called from JS when a new box is drawn."""

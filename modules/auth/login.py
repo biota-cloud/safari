@@ -8,6 +8,7 @@ Right panel: Full-bleed wildlife hero photo.
 import reflex as rx
 import styles
 from app_state import AuthState
+from components.brand_footer import brand_footer
 
 # Use centralized tokens from styles.py
 LOGIN_BG = styles.BG_PRIMARY               # Warm cream
@@ -25,49 +26,13 @@ LOGIN_ERROR_BG = f"{styles.ERROR}08"                 # Error banner bg (light re
 
 
 def safari_login_logo() -> rx.Component:
-    """Large SAFARI logo for the login page."""
+    """Large SAFARI logo for the login page — image-based."""
     return rx.vstack(
-        # Logo mark: [ ● SAFARI ]
-        rx.hstack(
-            rx.text(
-                "[",
-                style={
-                    "color": SAFARI_BROWN,
-                    "font_size": "36px",
-                    "font_weight": "300",
-                    "line_height": "1",
-                }
-            ),
-            rx.box(
-                style={
-                    "width": "14px",
-                    "height": "14px",
-                    "border_radius": "50%",
-                    "background": SAFARI_GREEN,
-                    "flex_shrink": "0",
-                }
-            ),
-            rx.text(
-                "S A F A R I",
-                style={
-                    "color": SAFARI_BROWN,
-                    "font_size": "28px",
-                    "font_weight": "300",
-                    "letter_spacing": "0.2em",
-                    "line_height": "1",
-                }
-            ),
-            rx.text(
-                "]",
-                style={
-                    "color": SAFARI_BROWN,
-                    "font_size": "36px",
-                    "font_weight": "300",
-                    "line_height": "1",
-                }
-            ),
-            spacing="2",
-            align="center",
+        rx.image(
+            src="/branding/safari_logo_600w.png",
+            alt="SAFARI",
+            width="320px",
+            style={"object_fit": "contain"},
         ),
         # Tagline
         rx.text(
@@ -104,182 +69,192 @@ def safari_login_logo() -> rx.Component:
 
 def login_form_panel() -> rx.Component:
     """Left panel — SAFARI branding + login form on cream background."""
-    return rx.center(
-        rx.vstack(
-            # Logo
-            safari_login_logo(),
+    return rx.box(
+        rx.center(
+            rx.vstack(
+                # Logo
+                safari_login_logo(),
 
-            # Divider
-            rx.box(
-                style={
-                    "width": "24px",
-                    "height": "1px",
-                    "background": LOGIN_TEXT_DIM,
-                    "margin_top": styles.SPACING_6,
-                    "margin_bottom": styles.SPACING_4,
-                }
-            ),
+                # Divider
+                rx.box(
+                    style={
+                        "width": "24px",
+                        "height": "1px",
+                        "background": LOGIN_TEXT_DIM,
+                        "margin_top": styles.SPACING_6,
+                        "margin_bottom": styles.SPACING_4,
+                    }
+                ),
 
-            # Sign In heading
-            rx.heading(
-                "Sign In into your Account",
-                size="4",
-                weight="medium",
-                style={
-                    "color": LOGIN_TEXT,
-                    "margin_bottom": styles.SPACING_6,
-                }
-            ),
+                # Sign In heading
+                rx.heading(
+                    "Sign In into your Account",
+                    size="4",
+                    weight="medium",
+                    style={
+                        "color": LOGIN_TEXT,
+                        "margin_bottom": styles.SPACING_6,
+                    }
+                ),
 
-            # Login form
-            rx.form(
-                rx.vstack(
-                    # Email input — outlined style
-                    rx.box(
-                        rx.el.input(
-                            placeholder="Email",
-                            type="email",
-                            name="email",
-                            style={
-                                "width": "100%",
-                                "padding": "14px 16px",
-                                "background": "transparent",
-                                "border": f"1px solid {LOGIN_BORDER}",
-                                "border_radius": "4px",
-                                "color": LOGIN_TEXT,
-                                "font_size": "15px",
-                                "outline": "none",
-                                "box_sizing": "border-box",
-                                "transition": "border-color 0.2s",
-                                "&:focus": {
-                                    "border_color": SAFARI_GREEN,
-                                    "border_width": "2px",
-                                    "padding": "13px 15px",
-                                },
-                                "&::placeholder": {
-                                    "color": LOGIN_TEXT_DIM,
-                                },
-                            }
+                # Login form
+                rx.form(
+                    rx.vstack(
+                        # Email input — outlined style
+                        rx.box(
+                            rx.el.input(
+                                placeholder="Email",
+                                type="email",
+                                name="email",
+                                style={
+                                    "width": "100%",
+                                    "padding": "14px 16px",
+                                    "background": "transparent",
+                                    "border": f"1px solid {LOGIN_BORDER}",
+                                    "border_radius": "4px",
+                                    "color": LOGIN_TEXT,
+                                    "font_size": "15px",
+                                    "outline": "none",
+                                    "box_sizing": "border-box",
+                                    "transition": "border-color 0.2s",
+                                    "&:focus": {
+                                        "border_color": SAFARI_GREEN,
+                                        "border_width": "2px",
+                                        "padding": "13px 15px",
+                                    },
+                                    "&::placeholder": {
+                                        "color": LOGIN_TEXT_DIM,
+                                    },
+                                }
+                            ),
+                            width="100%",
                         ),
-                        width="100%",
-                    ),
 
-                    # Password input — outlined style
-                    rx.box(
-                        rx.el.input(
-                            placeholder="Password",
-                            type="password",
-                            name="password",
-                            style={
-                                "width": "100%",
-                                "padding": "14px 16px",
-                                "background": "transparent",
-                                "border": f"1px solid {LOGIN_BORDER}",
-                                "border_radius": "4px",
-                                "color": LOGIN_TEXT,
-                                "font_size": "15px",
-                                "outline": "none",
-                                "box_sizing": "border-box",
-                                "transition": "border-color 0.2s",
-                                "&:focus": {
-                                    "border_color": SAFARI_GREEN,
-                                    "border_width": "2px",
-                                    "padding": "13px 15px",
-                                },
-                                "&::placeholder": {
-                                    "color": LOGIN_TEXT_DIM,
-                                },
-                            }
+                        # Password input — outlined style
+                        rx.box(
+                            rx.el.input(
+                                placeholder="Password",
+                                type="password",
+                                name="password",
+                                style={
+                                    "width": "100%",
+                                    "padding": "14px 16px",
+                                    "background": "transparent",
+                                    "border": f"1px solid {LOGIN_BORDER}",
+                                    "border_radius": "4px",
+                                    "color": LOGIN_TEXT,
+                                    "font_size": "15px",
+                                    "outline": "none",
+                                    "box_sizing": "border-box",
+                                    "transition": "border-color 0.2s",
+                                    "&:focus": {
+                                        "border_color": SAFARI_GREEN,
+                                        "border_width": "2px",
+                                        "padding": "13px 15px",
+                                    },
+                                    "&::placeholder": {
+                                        "color": LOGIN_TEXT_DIM,
+                                    },
+                                }
+                            ),
+                            width="100%",
                         ),
-                        width="100%",
-                    ),
 
-                    # Forgot password link
-                    rx.box(
-                        rx.text(
-                            "Forgot your password?",
-                            size="2",
-                            style={
-                                "color": SAFARI_GREEN,
-                                "cursor": "pointer",
-                                "&:hover": {"text_decoration": "underline"},
-                            }
-                        ),
-                        width="100%",
-                        text_align="left",
-                    ),
-
-                    # Error message
-                    rx.cond(
-                        AuthState.error_message != "",
+                        # Forgot password link
                         rx.box(
                             rx.text(
-                                AuthState.error_message,
+                                "Forgot your password?",
                                 size="2",
-                                style={"color": styles.ERROR}
+                                style={
+                                    "color": SAFARI_GREEN,
+                                    "cursor": "pointer",
+                                    "&:hover": {"text_decoration": "underline"},
+                                }
                             ),
-                            style={
-                                "background": LOGIN_ERROR_BG,
-                                "border": f"1px solid {styles.ERROR}30",
-                                "border_radius": "4px",
-                                "padding": styles.SPACING_3,
-                                "width": "100%",
-                            }
+                            width="100%",
+                            text_align="left",
                         ),
-                    ),
 
-                    # Sign In button — green CTA, ALL-CAPS
-                    rx.button(
+                        # Error message
                         rx.cond(
-                            AuthState.is_loading,
-                            rx.hstack(
-                                rx.spinner(size="1"),
-                                rx.text("SIGNING IN..."),
-                                spacing="2",
+                            AuthState.error_message != "",
+                            rx.box(
+                                rx.text(
+                                    AuthState.error_message,
+                                    size="2",
+                                    style={"color": styles.ERROR}
+                                ),
+                                style={
+                                    "background": LOGIN_ERROR_BG,
+                                    "border": f"1px solid {styles.ERROR}30",
+                                    "border_radius": "4px",
+                                    "padding": styles.SPACING_3,
+                                    "width": "100%",
+                                }
                             ),
-                            rx.text("SIGN IN"),
                         ),
-                        type="submit",
-                        disabled=AuthState.is_loading,
-                        style={
-                            "width": "100%",
-                            "background": SAFARI_GREEN,
-                            "color": "white",
-                            "padding": "14px",
-                            "border_radius": "4px",
-                            "font_weight": "500",
-                            "font_size": "14px",
-                            "letter_spacing": "0.08em",
-                            "cursor": "pointer",
-                            "transition": "background 0.2s",
-                            "&:hover": {
-                                "background": SAFARI_GREEN_HOVER,
-                            },
-                            "&:disabled": {
-                                "opacity": "0.6",
-                                "cursor": "not-allowed",
-                            }
-                        }
-                    ),
 
-                    spacing="4",
+                        # Sign In button — green CTA, ALL-CAPS
+                        rx.button(
+                            rx.cond(
+                                AuthState.is_loading,
+                                rx.hstack(
+                                    rx.spinner(size="1"),
+                                    rx.text("SIGNING IN..."),
+                                    spacing="2",
+                                ),
+                                rx.text("SIGN IN"),
+                            ),
+                            type="submit",
+                            disabled=AuthState.is_loading,
+                            style={
+                                "width": "100%",
+                                "background": SAFARI_GREEN,
+                                "color": "white",
+                                "padding": "14px",
+                                "border_radius": "4px",
+                                "font_weight": "500",
+                                "font_size": "14px",
+                                "letter_spacing": "0.08em",
+                                "cursor": "pointer",
+                                "transition": "background 0.2s",
+                                "&:hover": {
+                                    "background": SAFARI_GREEN_HOVER,
+                                },
+                                "&:disabled": {
+                                    "opacity": "0.6",
+                                    "cursor": "not-allowed",
+                                }
+                            }
+                        ),
+
+                        spacing="4",
+                        width="100%",
+                    ),
+                    on_submit=AuthState.login,
+                    reset_on_submit=False,
                     width="100%",
                 ),
-                on_submit=AuthState.login,
-                reset_on_submit=False,
-                width="100%",
-            ),
 
-            spacing="1",
-            width="100%",
-            max_width="400px",
-            align="center",
+                spacing="1",
+                width="100%",
+                max_width="400px",
+                align="center",
+            ),
+            style={
+                "flex": "1",
+                "width": "100%",
+            }
         ),
+        # Footer — pinned to bottom
+        brand_footer(variant="login"),
         style={
             "width": "50%",
             "min_height": "100vh",
             "background": LOGIN_BG,
             "padding": styles.SPACING_8,
+            "display": "flex",
+            "flex_direction": "column",
         }
     )
 

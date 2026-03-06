@@ -20,7 +20,7 @@ ACCENT_MUTE = "rgba(95, 173, 86, 0.1)"  # Muted green background
 ACCENT_MUTE_GREEN = "rgba(95, 173, 86, 0.15)"  # Active nav item wash
 
 # Header Bar
-HEADER_BG = "#4A3728"        # Chocolate brown — nav header background
+HEADER_BG = "#352516"        # Dark chocolate brown — nav header background (matched to logo)
 HEADER_TEXT = "#FFFFFF"       # White — header text
 HEADER_TEXT_DIM = "rgba(255, 255, 255, 0.7)"  # Dimmed header text
 

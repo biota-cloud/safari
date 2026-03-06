@@ -15,6 +15,7 @@ from modules.auth.hub_state import (
     HubTrainingRunModel,
 )
 from components.nav_header import nav_header
+from components.brand_footer import brand_footer
 from modules.projects.state import ProjectsState
 from modules.projects.new_project_modal import new_project_modal as projects_new_project_modal
 
@@ -1192,6 +1193,8 @@ def dashboard_content() -> rx.Component:
             loading_skeleton(),
             hub_content(),
         ),
+        # Footer — sober branding
+        brand_footer(variant="dashboard"),
         projects_new_project_modal(),
         delete_project_modal(),
         new_dataset_modal(),

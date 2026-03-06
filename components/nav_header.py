@@ -18,57 +18,12 @@ SAFARI_GREEN = styles.ACCENT        # Logo dot green
 
 
 def safari_logo() -> rx.Component:
-    """
-    SAFARI [●] logo mark — CSS recreation.
-    
-    Renders: [ ● S A F A R I ]
-    Using text with wide letter-spacing. The A's render as standard A
-    until official font assets arrive (the real logo uses crossbar-free A's).
-    """
-    return rx.hstack(
-        # Left bracket
-        rx.text(
-            "[",
-            style={
-                "color": HEADER_TEXT,
-                "font_size": "22px",
-                "font_weight": "300",
-                "line_height": "1",
-            }
-        ),
-        # Green dot
-        rx.box(
-            style={
-                "width": "10px",
-                "height": "10px",
-                "border_radius": "50%",
-                "background": SAFARI_GREEN,
-                "flex_shrink": "0",
-            }
-        ),
-        # SAFARI text
-        rx.text(
-            "S A F A R I",
-            style={
-                "color": HEADER_TEXT,
-                "font_size": "16px",
-                "font_weight": "300",
-                "letter_spacing": "0.15em",
-                "line_height": "1",
-            }
-        ),
-        # Right bracket
-        rx.text(
-            "]",
-            style={
-                "color": HEADER_TEXT,
-                "font_size": "22px",
-                "font_weight": "300",
-                "line_height": "1",
-            }
-        ),
-        spacing="2",
-        align="center",
+    """SAFARI logo mark — image-based."""
+    return rx.image(
+        src="/branding/safari_logo_nav.png",
+        alt="SAFARI",
+        height="28px",
+        style={"object_fit": "contain"},
     )
 
 

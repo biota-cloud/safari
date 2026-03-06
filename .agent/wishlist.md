@@ -35,6 +35,21 @@
   - `backend/core/train_classify_core.py` → `collect_classification_artifacts()` (add ConvNeXt artifact paths to upload list)
 - **Key point**: No changes to the training algorithm — this is pure instrumentation (recording what's already happening + visualizing at end). Artifacts upload to R2 via the existing artifact collection pattern.
 
+### W007 — Hybrid Autolabel Pipeline (Detection + Classification)
+- **Context**: Autolabel currently supports SAM3 (text/bbox/point) and YOLO detection, but not hybrid (detect → crop → classify). Hybrid inference only exists in the Playground module.
+- **Goal**: Enable autolabel to use a detection model + classification backbone (ConvNeXt/YOLO-cls) to produce labeled annotations with class names from the classifier.
+- **Architecture**:
+  1. YOLO detection pass → bounding boxes
+  2. Crop each detection from the image
+  3. ConvNeXt/YOLO-cls classification on each crop → class assignment
+  4. Save combined annotations (bbox + class) to Supabase/R2
+- **Files to modify**:
+  - `backend/modal_jobs/autolabel_job.py` — add hybrid mode, handle `.pth` model loading
+  - `backend/core/autolabel_core.py` — add `run_hybrid_autolabel()` core function
+  - `modules/labeling/state.py` — expose hybrid model selection in autolabel UI
+- **Dependencies**: Shared Core Pattern must be followed for Modal/Local GPU parity
+- **Priority**: Medium
+- **Added**: 2026-03-05
 
 
 ---

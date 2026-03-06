@@ -36,6 +36,7 @@ def run_hybrid_batch_inference(
     # Environment-specific parameters:
     sam3_model_path: Optional[str] = None,
     download_classifier_fn: Callable[[str, Path], bool] = None,
+    sam3_imgsz: int = 644,
 ) -> list[dict]:
     """
     Run hybrid SAM3 + Classifier inference on multiple images sequentially.
@@ -81,6 +82,7 @@ def run_hybrid_batch_inference(
             conf=confidence_threshold,
             task="segment",
             mode="predict",
+            imgsz=sam3_imgsz,
             half=True,
             save=False,
         )

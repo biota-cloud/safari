@@ -95,6 +95,7 @@ def hybrid_inference(
     prompt_class_map: dict[str, list[str]],
     confidence_threshold: float = 0.25,
     classifier_confidence: float = 0.5,
+    sam3_imgsz: int = 644,
 ) -> dict:
     """
     Run hybrid SAM3 + Classifier inference on a single image.
@@ -119,6 +120,7 @@ def hybrid_inference(
         classifier_confidence=classifier_confidence,
         # Remote-worker-specific configuration:
         sam3_model_path=sam3_model_path,
+        sam3_imgsz=sam3_imgsz,
         download_classifier_fn=_download_classifier_for_inference,
     )
 
@@ -131,6 +133,7 @@ def hybrid_inference_batch(
     prompt_class_map: dict[str, list[str]],  # Kept for API compat, unused in hybrid
     confidence_threshold: float = 0.25,
     classifier_confidence: float = 0.5,
+    sam3_imgsz: int = 644,
 ) -> list[dict]:
     """
     Run hybrid inference on multiple images sequentially.
@@ -152,6 +155,7 @@ def hybrid_inference_batch(
         classifier_confidence=classifier_confidence,
         # Remote-worker-specific configuration:
         sam3_model_path=sam3_model_path,
+        sam3_imgsz=sam3_imgsz,
         download_classifier_fn=_download_classifier_for_inference,
     )
 
@@ -174,7 +178,7 @@ def hybrid_inference_video(
     end_time: float = None,
     frame_skip: int = 1,
     classify_top_k: int = 3,
-    sam3_imgsz: int = 640,
+    sam3_imgsz: int = 644,
 ) -> dict:
     """
     Run hybrid inference on video using SAM3's native video tracking.

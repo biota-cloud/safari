@@ -381,6 +381,7 @@ def dispatch_hybrid_inference(
     user_id: str = None,  # Required for local target
     machine_name: str = None,  # Required for local target
     sam3_model_path: str = None,  # Volume path for fine-tuned SAM3 model (cloud only)
+    sam3_imgsz: int = 644,  # SAM3 inference resolution (stride-14 aligned)
 ) -> dict:
     """Dispatch single image hybrid inference to Modal or local GPU.
     
@@ -413,6 +414,7 @@ def dispatch_hybrid_inference(
                 "prompt_class_map": prompt_class_map,
                 "confidence_threshold": confidence_threshold,
                 "classifier_confidence": classifier_confidence,
+                "sam3_imgsz": sam3_imgsz,
             })
             return result
     else:
@@ -429,6 +431,7 @@ def dispatch_hybrid_inference(
         )
         if sam3_model_path:
             kwargs["sam3_model_path"] = sam3_model_path
+        kwargs["sam3_imgsz"] = sam3_imgsz
         return fn.remote(**kwargs)
 
 
@@ -446,6 +449,7 @@ def dispatch_hybrid_inference_batch(
     user_id: str = None,  # Required for local target
     machine_name: str = None,  # Required for local target
     sam3_model_path: str = None,  # Volume path for fine-tuned SAM3 model (cloud only)
+    sam3_imgsz: int = 644,  # SAM3 inference resolution (stride-14 aligned)
 ) -> list[dict]:
     """Dispatch batch hybrid inference to Modal or local GPU.
     
@@ -478,6 +482,7 @@ def dispatch_hybrid_inference_batch(
                 "prompt_class_map": prompt_class_map,
                 "confidence_threshold": confidence_threshold,
                 "classifier_confidence": classifier_confidence,
+                "sam3_imgsz": sam3_imgsz,
             })
             return result.get("results", [])
     else:
@@ -494,6 +499,7 @@ def dispatch_hybrid_inference_batch(
         )
         if sam3_model_path:
             kwargs["sam3_model_path"] = sam3_model_path
+        kwargs["sam3_imgsz"] = sam3_imgsz
         return fn.remote(**kwargs)
 
 
@@ -510,7 +516,7 @@ def dispatch_hybrid_inference_video(
     end_time: float = None,
     frame_skip: int = 1,
     classify_top_k: int = 3,
-    sam3_imgsz: int = 640,
+    sam3_imgsz: int = 644,
     # Action-level target selection
     target: str = None,  # "cloud" or "local", defaults to project lookup
     user_id: str = None,  # Required for local target

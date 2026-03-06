@@ -1564,27 +1564,10 @@ def autolabel_modal() -> rx.Component:
                     rx.tabs.list(
                         rx.tabs.trigger("SAM3", value="sam3"),
                         rx.tabs.trigger("YOLO Model", value="yolo"),
-                        rx.tabs.trigger(
-                            rx.hstack(
-                                rx.text("Video Track", size="1"),
-                                rx.badge("Soon", size="1", variant="outline"),
-                                spacing="1",
-                            ),
-                            value="video_track",
-                            disabled=True,
-                        ),
                         size="1",
                     ),
                     rx.tabs.content(sam3_panel(), value="sam3", padding_top="16px"),
                     rx.tabs.content(yolo_panel(), value="yolo", padding_top="16px"),
-                    rx.tabs.content(
-                        future_tab_placeholder(
-                            "film",
-                            "Video Object Tracking",
-                            "Track objects across video frames automatically."
-                        ),
-                        value="video_track",
-                    ),
                     value=VideoLabelingState.autolabel_mode,
                     on_change=VideoLabelingState.set_autolabel_mode,
                     width="100%",
@@ -1711,6 +1694,20 @@ def right_sidebar() -> rx.Component:
                         size="2",
                         title="Draw Rectangle (R)",
                     ),
+                    # Mask Edit Tool
+                    rx.icon_button(
+                        rx.icon("pentagon", size=20),
+                        on_click=lambda: VideoLabelingState.set_tool("mask_edit"),
+                        variant="solid",
+                        color_scheme=rx.cond(
+                            VideoLabelingState.current_tool == "mask_edit",
+                            "blue",
+                            "gray"
+                        ),
+                        size="2",
+                        cursor="pointer",
+                        title="Edit Masks (C)"
+                    ),
                     # Auto-Label Tool (opens modal)
                     rx.icon_button(
                         rx.icon("sparkles", size=20),
@@ -1792,42 +1789,57 @@ def right_sidebar() -> rx.Component:
             # Current annotations section
             rx.cond(
                 VideoLabelingState.has_selected_keyframe,
-                rx.vstack(
-                    rx.hstack(
-                        rx.text(
-                            "Annotations",
-                            size="2",
-                            weight="medium",
-                            style={"color": styles.TEXT_PRIMARY}
-                        ),
-                        rx.spacer(),
-                        rx.text(
-                            VideoLabelingState.annotations.length(),
-                            size="1",
-                            style={"color": styles.TEXT_SECONDARY}
-                        ),
-                        width="100%",
-                        align="center",
-                    ),
-                    rx.divider(style={"border_color": styles.BORDER}),
-                    rx.scroll_area(
-                        rx.vstack(
-                            rx.foreach(
-                                VideoLabelingState.annotations,
-                                annotation_item,
+                rx.fragment(
+                    rx.vstack(
+                        rx.hstack(
+                            rx.text(
+                                "Annotations",
+                                size="2",
+                                weight="medium",
+                                style={"color": styles.TEXT_PRIMARY}
                             ),
-                            spacing="1",
+                            rx.spacer(),
+                            rx.text(
+                                VideoLabelingState.annotations.length(),
+                                size="1",
+                                style={"color": styles.TEXT_SECONDARY}
+                            ),
                             width="100%",
+                            align="center",
                         ),
-                        type="auto",
-                        style={"flex": "1", "width": "100%", "min_height": "0"},
+                        rx.divider(style={"border_color": styles.BORDER}),
+                        rx.scroll_area(
+                            rx.vstack(
+                                rx.foreach(
+                                    VideoLabelingState.annotations,
+                                    annotation_item,
+                                ),
+                                spacing="1",
+                                width="100%",
+                            ),
+                            type="auto",
+                            style={"flex": "1", "width": "100%", "min_height": "0"},
+                        ),
+                        # Delete Mask button (only shown when selected annotation has mask)
+                        rx.cond(
+                            VideoLabelingState.selected_annotation_has_mask,
+                            rx.button(
+                                rx.icon("eraser", size=14),
+                                "Delete Mask",
+                                variant="outline",
+                                color_scheme="gray",
+                                size="1",
+                                width="100%",
+                                on_click=VideoLabelingState.delete_mask_from_annotation,
+                                cursor="pointer",
+                            ),
+                        ),
+                        spacing="2",
+                        height="100%",
+                        width="100%",
+                        min_height="0",
                     ),
-                    spacing="2",
-                    height="100%",
-                    width="100%",
-                    min_height="0",
                 ),
-                rx.fragment(),
             ),
             spacing="4",
             height="100%",
@@ -1907,7 +1919,7 @@ def shortcuts_help_modal() -> rx.Component:
                 rx.text("Annotation", size="2", weight="medium"),
                 shortcut_row("V", "Select tool"),
                 shortcut_row("R", "Draw rectangle"),
-                shortcut_row("C*", "Edit masks (image only)"),
+                shortcut_row("⬠", "Edit masks (button only)"),
                 shortcut_row("Delete", "Delete selected"),
                 shortcut_row("1-9", "Select class"),
                 rx.divider(),

@@ -86,6 +86,7 @@ def run_sam3_detection(
     confidence_threshold: float,
     sam3_model_path: Optional[str] = None,
     bbox_padding: float = 0.03,
+    sam3_imgsz: int = 644,
 ) -> list[tuple]:
     """
     Run SAM3 semantic detection on an image.
@@ -112,6 +113,7 @@ def run_sam3_detection(
         conf=confidence_threshold,
         task="segment",
         mode="predict",
+        imgsz=sam3_imgsz,
         half=True,
         save=False,
     )
@@ -330,6 +332,7 @@ def run_hybrid_inference(
     classifier_confidence: float,
     # Environment-specific parameters:
     sam3_model_path: Optional[str] = None,
+    sam3_imgsz: int = 644,
     download_classifier_fn: Callable[[str, Path], bool] = None,
 ) -> dict:
     """
@@ -389,6 +392,7 @@ def run_hybrid_inference(
             sam3_prompts=sam3_prompts,
             confidence_threshold=confidence_threshold,
             sam3_model_path=sam3_model_path,
+            sam3_imgsz=sam3_imgsz,
         )
         
         if not sam3_detections:
