@@ -175,6 +175,7 @@ CREATE TABLE models (
     training_run_id UUID REFERENCES training_runs(id) ON DELETE CASCADE,
     dataset_id UUID REFERENCES datasets(id) ON DELETE CASCADE,
     user_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
+    project_id UUID REFERENCES projects(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
     weights_path TEXT NOT NULL,
     metrics JSONB,
@@ -341,6 +342,7 @@ CREATE INDEX idx_keyframes_video_id ON keyframes(video_id);
 CREATE INDEX idx_datasets_project_id ON datasets(project_id);
 CREATE INDEX idx_training_runs_project_id ON training_runs(project_id);
 CREATE INDEX idx_training_runs_dataset_id ON training_runs(dataset_id);
+CREATE INDEX idx_models_project_id ON models(project_id);
 CREATE INDEX idx_inference_results_user_id ON inference_results(user_id);
 CREATE INDEX idx_autolabel_jobs_dataset_id ON autolabel_jobs(dataset_id);
 CREATE INDEX idx_api_keys_user_id ON api_keys(user_id);

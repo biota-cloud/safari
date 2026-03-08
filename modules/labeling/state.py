@@ -2383,7 +2383,7 @@ class LabelingState(rx.State):
     
     async def _load_autolabel_models(self):
         """Load models with volume_path available for autolabeling."""
-        from backend.supabase_client import get_autolabel_models
+        from backend.supabase_client import get_autolabel_models, get_accessible_project_ids
         
         auth_state = await self.get_state(AuthState)
         user_id = auth_state.user.get("id") if auth_state.user else None
@@ -2393,7 +2393,8 @@ class LabelingState(rx.State):
             return
         
         try:
-            models = get_autolabel_models(user_id)
+            project_ids = get_accessible_project_ids(user_id)
+            models = get_autolabel_models(project_ids)
             self.available_autolabel_models = models
             print(f"[AutoLabel] Loaded {len(models)} models with volume_path")
             

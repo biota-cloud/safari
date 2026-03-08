@@ -20,6 +20,7 @@ from backend.supabase_client import (
     create_inference_result, 
     get_user_inference_results,
     get_models_grouped_by_project,
+    get_accessible_project_ids,
     delete_inference_result as db_delete_inference_result,
     create_pending_inference_result,
     complete_inference_result,
@@ -810,7 +811,8 @@ class InferenceState(rx.State):
                 self.local_machines = get_user_local_machines(user_id)
                 
                 # Get models grouped by project for selector
-                grouped = get_models_grouped_by_project(user_id)
+                project_ids = get_accessible_project_ids(user_id)
+                grouped = get_models_grouped_by_project(project_ids)
                 print(f"[DEBUG] grouped result: {grouped}")
                 self.models_by_project = grouped.get("projects", [])
                 print(f"[DEBUG] models_by_project: {self.models_by_project}")

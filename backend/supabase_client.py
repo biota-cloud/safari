@@ -1646,6 +1646,14 @@ def create_model(
         top5_accuracy: Top-5 accuracy for classification models
     """
     supabase = get_supabase()
+    
+    # Auto-resolve project_id from dataset_id for team model sharing
+    project_id = None
+    if dataset_id:
+        ds = supabase.table("datasets").select("project_id").eq("id", dataset_id).single().execute()
+        if ds.data:
+            project_id = ds.data["project_id"]
+    
     data = {
         "training_run_id": training_run_id,
         "dataset_id": dataset_id,
@@ -1654,6 +1662,8 @@ def create_model(
         "weights_path": weights_path,
         "model_type": model_type,
     }
+    if project_id is not None:
+        data["project_id"] = project_id
     if volume_path is not None:
         data["volume_path"] = volume_path
     if metrics is not None:
@@ -2547,13 +2557,21 @@ def get_inference_stats(user_id: str) -> dict:
 # ENHANCED MODEL MANAGEMENT (Phase 3.4)
 # =============================================================================
 
-def get_user_models(user_id: str) -> list[dict]:
-    """Get playground models for user (excludes autolabel models with volume_path)."""
+def get_accessible_project_ids(user_id: str) -> list[str]:
+    """Get IDs of all projects the user can access (owned + member + admin-company)."""
+    projects = _get_accessible_projects(user_id)
+    return [p["id"] for p in projects]
+
+
+def get_user_models(project_ids: list[str]) -> list[dict]:
+    """Get playground models across accessible projects (excludes autolabel models with volume_path)."""
+    if not project_ids:
+        return []
     supabase = get_supabase()
     result = (
         supabase.table("models")
         .select("*")
-        .eq("user_id", user_id)
+        .in_("project_id", project_ids)
         .is_("volume_path", "null")  # Exclude autolabel models (they have volume_path set)
         .order("created_at", desc=True)
         .execute()
@@ -2561,30 +2579,33 @@ def get_user_models(user_id: str) -> list[dict]:
     return result.data or []
 
 
-def get_user_models_by_type(user_id: str, model_type: str) -> list[dict]:
-    """Get all saved models for user filtered by model type.
+def get_user_models_by_type(project_ids: list[str], model_type: str) -> list[dict]:
+    """Get all saved models across accessible projects filtered by model type.
     
     Args:
-        user_id: UUID of the user
+        project_ids: List of accessible project UUIDs
         model_type: 'detection' or 'classification'
         
     Returns:
         List of model records matching the specified type
     """
+    if not project_ids:
+        return []
     supabase = get_supabase()
     result = (
         supabase.table("models")
         .select("*")
-        .eq("user_id", user_id)
+        .in_("project_id", project_ids)
         .eq("model_type", model_type)
         .order("created_at", desc=True)
         .execute()
     )
     return result.data or []
 
-def get_models_grouped_by_project(user_id: str) -> dict:
+def get_models_grouped_by_project(project_ids: list[str]) -> dict:
     """
-    Get user's models grouped by project name for the inference playground.
+    Get models grouped by project name for the inference playground.
+    Returns models across all accessible projects (team model sharing).
     
     Returns: {
         "projects": [
@@ -2606,8 +2627,8 @@ def get_models_grouped_by_project(user_id: str) -> dict:
     """
     supabase = get_supabase()
     
-    # Get all models for user with dataset info
-    models = get_user_models(user_id)
+    # Get all models across accessible projects
+    models = get_user_models(project_ids)
     if not models:
         return {"projects": []}
     
@@ -2796,17 +2817,20 @@ def update_model_volume_path(model_id: str, volume_path: str) -> dict | None:
     return result.data[0] if result.data else None
 
 
-def get_autolabel_models(user_id: str) -> list[dict]:
+def get_autolabel_models(project_ids: list[str]) -> list[dict]:
     """
     Get models that have volume_path set (available for autolabeling).
+    Returns models across all accessible projects (team model sharing).
     
     Returns models with their associated dataset, project info, and training run alias for display.
     """
+    if not project_ids:
+        return []
     supabase = get_supabase()
     result = (
         supabase.table("models")
         .select("*, datasets!models_dataset_id_fkey(name, project_id, projects(name)), training_runs!models_training_run_id_fkey(alias)")
-        .eq("user_id", user_id)
+        .in_("project_id", project_ids)
         .not_.is_("volume_path", "null")
         .order("created_at", desc=True)
         .execute()
