@@ -451,7 +451,14 @@
     window.renderAnnotations = function (a) {
         annotations = a || [];
         _lastRenderAnnotationsTime = performance.now();
-        drawCanvas();
+        _seekHasPythonAnnotations = true;
+        // If a seek is in flight, DON'T draw now — the seeked handler
+        // will draw the frame + annotations as the definitive last step.
+        // This prevents renderAnnotations from drawing on a stale frame
+        // that gets immediately overwritten by the seek.
+        if (!_isSeeking && !_seekDebounceTimer) {
+            drawCanvas();
+        }
     };
 
     function calculateFit() {
@@ -2475,7 +2482,19 @@
             console.log('[Video] oncanplay - video ready');
             clearLoadingOverlay();
             triggerVideoLoading('complete');
-            drawVideoFrameToCanvas();
+            // Skip draw during active seeks — the seeked handler will
+            // draw the definitive frame + annotations as the last step.
+            if (!_isSeeking) {
+                // On initial load, annotations from renderAnnotations may have been
+                // drawn before the video frame was ready. Re-apply from cache to
+                // ensure they render on the actual video frame.
+                const currentFrame = Math.floor(sourceVideo.currentTime * videoFps);
+                const cachedAnns = videoAnnotationCache[currentFrame];
+                if (cachedAnns && cachedAnns.length > 0) {
+                    annotations = cachedAnns;
+                }
+                drawVideoFrameToCanvas();
+            }
         };
 
         sourceVideo.onerror = function (e) {
@@ -2610,13 +2629,17 @@
     let _seekDebounceTimer = null;
     let _isSeeking = false;
     let _pendingSeekFrame = null;
-    let _seekStartTime = 0;  // Track when the current seek cycle began
+    let _seekStartTime = 0;              // Track when _executeSeek fires (for seeked handler)
+    let _seekHasPythonAnnotations = false; // True when renderAnnotations was called since last seekToFrame
 
     window.seekToFrame = function (frame, fps) {
         if (!sourceVideo) return;
 
         videoFps = fps || 30;
-        _seekStartTime = performance.now();
+
+        // Reset flag: will be set to true if renderAnnotations is called
+        // in the same script batch (e.g. Python sends seek + annotations together).
+        _seekHasPythonAnnotations = false;
 
         // Debounce rapid slider drags: only process the last seek within 50ms
         _pendingSeekFrame = frame;
@@ -2636,11 +2659,15 @@
 
         const time = frame / videoFps;
         _isSeeking = true;
+        _seekStartTime = performance.now();
 
-        // Immediately clear stale annotations for this frame
-        // (prevents ghost annotations during rapid scrubbing)
-        const immediateCachedAnns = videoAnnotationCache[frame];
-        annotations = immediateCachedAnns || [];
+        // If Python sent annotations via renderAnnotations() in the same
+        // script batch as seekToFrame(), keep those authoritative annotations.
+        // Otherwise use JS cache to clear stale annotations.
+        if (!_seekHasPythonAnnotations) {
+            const immediateCachedAnns = videoAnnotationCache[frame];
+            annotations = immediateCachedAnns || [];
+        }
 
         sourceVideo.currentTime = time;
 
@@ -2648,21 +2675,20 @@
         sourceVideo.addEventListener('seeked', function onSeeked() {
             sourceVideo.removeEventListener('seeked', onSeeked);
             _isSeeking = false;
-            drawVideoFrameToCanvas();
 
-            // Render annotations: prefer Python-sent data over JS cache.
-            // If renderAnnotations() was called AFTER seekToFrame() started
-            // (i.e. Python sent both seek + annotations in one batch),
-            // keep those authoritative annotations instead of the JS cache
-            // which may not have them yet.
-            if (_lastRenderAnnotationsTime < _seekStartTime) {
-                // No Python renderAnnotations during this seek cycle
+            // Set annotations BEFORE drawing so the frame renders
+            // with annotations in a single pass (no flash-then-clear).
+            if (!_seekHasPythonAnnotations) {
+                // No Python renderAnnotations for this seek
                 // → use JS cache (standard playback / slider scrub path)
                 const cachedAnns = videoAnnotationCache[frame];
                 annotations = cachedAnns || [];
             }
-            // Always redraw: either with Python-sent or cached annotations
-            drawCanvas();
+            // Consume the flag after use
+            _seekHasPythonAnnotations = false;
+
+            // Draw frame + annotations together
+            drawVideoFrameToCanvas();
 
             // If another seek was queued while we were seeking, execute it
             if (_pendingSeekFrame !== null && _pendingSeekFrame !== frame) {
@@ -2748,18 +2774,14 @@
             if (sourceVideo && !sourceVideo.paused && !sourceVideo.ended) {
                 if (now - lastFrameTime >= minFrameInterval) {
                     lastFrameTime = now;
-                    drawVideoFrameToCanvas();
-
-                    // Render annotations from JS-side cache (zero latency)
+                    // Set annotations from JS-side cache BEFORE drawing
+                    // so drawCanvas (called inside drawVideoFrameToCanvas)
+                    // renders the frame WITH annotations in a single pass.
                     const currentFrame = Math.floor(sourceVideo.currentTime * videoFps);
                     const cachedAnns = videoAnnotationCache[currentFrame];
                     annotations = cachedAnns || [];
-                    // drawCanvas is already called by drawVideoFrameToCanvas,
-                    // but annotations are set after — trigger one more draw
-                    // only if we actually have annotations to show
-                    if (cachedAnns && cachedAnns.length > 0) {
-                        drawCanvas();
-                    }
+
+                    drawVideoFrameToCanvas();
 
                     // Throttled sync to Python for UI counter updates only (~4fps)
                     if (now - _lastPythonSyncTime >= PYTHON_SYNC_INTERVAL) {

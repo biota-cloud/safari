@@ -1584,14 +1584,17 @@ class VideoLabelingState(rx.State):
         
         print(f"[VideoLabeling] Selected keyframe idx={idx}, frame={kf.frame_number}, annotations={len(self.annotations)}")
         
-        # Yield JS calls to seek, push annotations, and notify that keyframe is selected
-        yield rx.call_script(f"window.seekToFrame && window.seekToFrame({kf.frame_number}, {self.fps})")
-        yield rx.call_script(f"window.renderAnnotations && window.renderAnnotations({json.dumps(self.annotations)})")
-        yield rx.call_script("window.setKeyframeSelected && window.setKeyframeSelected(true)")
-        # Auto-scroll to keep selected keyframe visible in sidebar
-        yield rx.call_script(
+        # Yield JS calls as a single batch (1 WS message) to ensure
+        # seekToFrame + renderAnnotations run synchronously in the same script.
+        scroll_js = (
             f"document.getElementById('keyframe-{kf.frame_number}')"
-            f"?.scrollIntoView({{ behavior: 'smooth', block: 'nearest' }})"
+            f"?.scrollIntoView({{ behavior: 'smooth', block: 'nearest' }});"
+        )
+        yield rx.call_script(
+            f"window.seekToFrame && window.seekToFrame({kf.frame_number}, {self.fps});"
+            f"window.renderAnnotations && window.renderAnnotations({json.dumps(self.annotations)});"
+            f"window.setKeyframeSelected && window.setKeyframeSelected(true);"
+            f"{scroll_js}"
         )
     
     async def _load_keyframe_annotations(self, keyframe_id: str):
