@@ -610,13 +610,23 @@ def create_key_modal() -> rx.Component:
                 APIState.new_key_created,
                 # Success state - show the raw key prominently
                 rx.vstack(
-                    rx.callout(
+                    rx.hstack(
+                        rx.icon("alert-triangle", size=18, color="#b45309"),
                         rx.text(
                             "Your API key has been created. Copy it now — you won't be able to see it again!",
+                            size="2",
+                            weight="medium",
+                            style={"color": "#92400e"},
                         ),
-                        icon="alert-triangle",
-                        color="yellow",
-                        style={"width": "100%"},
+                        spacing="2",
+                        align="start",
+                        style={
+                            "width": "100%",
+                            "padding": styles.SPACING_3,
+                            "background": "#fef3c7",
+                            "border": "1px solid #f59e0b",
+                            "border_radius": styles.RADIUS_SM,
+                        },
                     ),
                     # Key display - stacked vertically for full visibility
                     rx.vstack(

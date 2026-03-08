@@ -9,6 +9,7 @@ import reflex as rx
 import styles
 from app_state import require_auth, AuthState
 from modules.training.state import TrainingState
+from modules.training.dashboard import api_promote_modal
 
 
 def breadcrumb_nav() -> rx.Component:
@@ -29,6 +30,15 @@ def breadcrumb_nav() -> rx.Component:
         rx.cond(
             TrainingState.selected_run_is_completed,
             rx.hstack(
+                # Add to API dropdown
+                rx.button(
+                    rx.icon("plug", size=14),
+                    "API",
+                    size="1",
+                    variant="outline",
+                    color_scheme="green",
+                    on_click=TrainingState.open_api_promote_modal(TrainingState.selected_run.id),
+                ),
                 # Add to Playground dropdown
                 rx.menu.root(
                     rx.menu.trigger(
@@ -1472,6 +1482,8 @@ def run_detail_page_content() -> rx.Component:
         breadcrumb_nav(),
         run_header(),
         run_detail_content(),
+        # API Promote modal (shared with dashboard)
+        api_promote_modal(),
         style={
             "background": styles.BG_PRIMARY,
             "min_height": "100vh",
