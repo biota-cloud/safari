@@ -27,13 +27,11 @@ def _get_auth_retry():
 
 
 _supabase_client: Client | None = None
-_supabase_auth_client: Client | None = None
-
 def get_supabase() -> Client:
     """
     Get a cached Supabase client for DATA operations (service role, bypasses RLS).
     
-    WARNING: Do NOT call .auth methods on this client — use get_supabase_auth() instead.
+    WARNING: Do NOT call .auth methods on this client — use create_supabase_auth() instead.
     Calling auth.set_session() on this client would override the service role identity.
     """
     global _supabase_client
@@ -57,17 +55,14 @@ def get_supabase() -> Client:
     return _supabase_client
 
 
-def get_supabase_auth() -> Client:
+def create_supabase_auth() -> Client:
     """
-    Get a cached Supabase client for AUTH operations (anon key, supports user sessions).
+    Create a NEW Supabase client for AUTH operations (anon key, supports user sessions).
     
-    This client is used for sign_in, sign_out, set_session, refresh_session etc.
-    It uses the anon key so auth.set_session() works correctly with user JWTs.
+    IMPORTANT: Not cached — each user session must get its own client instance to
+    avoid cross-user session contamination. When one user calls set_session() it
+    must NOT affect another user's in-memory auth state.
     """
-    global _supabase_auth_client
-    if _supabase_auth_client is not None:
-        return _supabase_auth_client
-    
     url = os.getenv('SUPABASE_URL')
     key = os.getenv('SUPABASE_KEY')
     
@@ -76,8 +71,14 @@ def get_supabase_auth() -> Client:
             "SUPABASE_URL and SUPABASE_KEY must be set in environment variables."
         )
     
-    _supabase_auth_client = create_client(url, key)
-    return _supabase_auth_client
+    return create_client(url, key)
+
+
+# Backward-compatible alias (deprecated — use create_supabase_auth instead)
+def get_supabase_auth() -> Client:
+    """DEPRECATED: Use create_supabase_auth() instead. This returns a fresh client
+    each time (no longer cached) to prevent multi-user session contamination."""
+    return create_supabase_auth()
 
 
 # =============================================================================

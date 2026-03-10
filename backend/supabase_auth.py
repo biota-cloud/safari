@@ -19,7 +19,7 @@ import functools
 import time
 from typing import Callable, TypeVar, Any
 
-from backend.supabase_client import get_supabase_auth
+from backend.supabase_client import create_supabase_auth
 
 T = TypeVar('T')
 
@@ -66,11 +66,14 @@ def refresh_supabase_session() -> bool:
     """
     Attempt to refresh the current Supabase session.
     
+    NOTE: With per-session auth clients, this creates a fresh client and
+    attempts to refresh. It's a best-effort safety net for data operations.
+    
     Returns:
         True if refresh succeeded, False otherwise.
     """
     try:
-        supabase = get_supabase_auth()
+        supabase = create_supabase_auth()
         session = supabase.auth.get_session()
         
         if session and hasattr(session, 'refresh_token') and session.refresh_token:

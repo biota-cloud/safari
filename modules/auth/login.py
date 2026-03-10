@@ -273,7 +273,7 @@ def hero_photo_panel() -> rx.Component:
     )
 
 
-@rx.page(route="/login", title="Login | SAFARI", on_load=AuthState.check_auth)
+@rx.page(route="/login", title="Login | SAFARI")
 def login_page() -> rx.Component:
     """The login page — split-panel layout."""
     return rx.box(
@@ -290,31 +290,6 @@ def login_page() -> rx.Component:
             hero_photo_panel(),
             spacing="0",
             width="100%",
-        ),
-        # Script to restore session from storage if server state is lost
-        # NOTE: localStorage keys still use safari_* — will be updated in Step 0.3
-        rx.script(
-            """
-            (function() {
-                // Check localStorage first, then sessionStorage
-                let userId = localStorage.getItem('safari_user_id');
-                let userEmail = localStorage.getItem('safari_user_email');
-                let accessToken = localStorage.getItem('safari_access_token');
-                
-                if (!userId || !userEmail || !accessToken) {
-                    userId = sessionStorage.getItem('safari_user_id');
-                    userEmail = sessionStorage.getItem('safari_user_email');
-                    accessToken = sessionStorage.getItem('safari_access_token');
-                }
-                
-                if (userId && userEmail && accessToken) {
-                    console.log('[SAFARI] Found stored session for:', userEmail);
-                    // Redirect to dashboard since we have saved credentials
-                    // The session will be restored on protected pages
-                    window.location.href = '/dashboard';
-                }
-            })();
-            """
         ),
         style={
             "min_height": "100vh",

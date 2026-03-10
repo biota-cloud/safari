@@ -7,7 +7,7 @@ Session tokens are persisted in browser local storage for longer sessions.
 
 import reflex as rx
 from typing import Optional
-from backend.supabase_client import get_supabase, get_supabase_auth
+from backend.supabase_client import get_supabase, create_supabase_auth
 
 
 class AuthState(rx.State):
@@ -25,7 +25,8 @@ class AuthState(rx.State):
     # Session lifecycle: False until first auth check completes (prevents login page flash)
     session_checked: bool = False
     
-    # Session restoration singleton gate (prevents parallel set_session race conditions)
+    # Session restoration gate — per-instance (not class-level) to avoid
+    # cross-user blocking in multi-user deployments.
     _session_restore_in_progress: bool = False
     
     @rx.var
@@ -76,7 +77,7 @@ class AuthState(rx.State):
         yield  # Update UI to show loading state
         
         try:
-            supabase = get_supabase_auth()
+            supabase = create_supabase_auth()
             response = supabase.auth.sign_in_with_password({
                 "email": email,
                 "password": password
@@ -125,7 +126,7 @@ class AuthState(rx.State):
         yield
         
         try:
-            supabase = get_supabase_auth()
+            supabase = create_supabase_auth()
             supabase.auth.sign_out()
         except Exception:
             pass  # Ignore errors during logout
@@ -154,30 +155,22 @@ class AuthState(rx.State):
     async def check_auth(self):
         """
         Check if user has an active session on page load.
-        Tries to get session from Supabase client (in-memory).
-        Call this in on_load for protected pages.
         
-        Note: Restoration from browser storage is handled separately
+        In multi-user mode, we rely ONLY on per-instance state (self.user)
+        which was set during login or restored from browser storage.
+        We do NOT read from a shared Supabase client, because that would
+        return whichever user last called set_session() globally.
+        
+        Restoration from browser storage is handled separately
         by try_restore_from_storage via on_mount in require_auth.
         """
-        # Try to get session from Supabase client (in-memory)
-        try:
-            supabase = get_supabase_auth()
-            session = supabase.auth.get_session()
-            
-            if session and session.user:
-                self.user = {
-                    "id": session.user.id,
-                    "email": session.user.email,
-                }
-                self.access_token = session.access_token
-                self.refresh_token = getattr(session, 'refresh_token', None)
-                self.session_checked = True
-                return
-        except Exception as e:
-            print(f"[DEBUG] get_session error: {e}")
+        # If this instance already has a valid user (set during login or
+        # a previous restore), mark as checked and return immediately.
+        if self.user is not None and self.access_token:
+            self.session_checked = True
+            return
         
-        # No valid server-side session found — don't clear state or mark checked.
+        # No valid per-instance session found — don't clear state or mark checked.
         # Restoration from browser localStorage is handled by on_mount
         # via try_restore_from_storage. That will mark session_checked = True.
     
@@ -187,12 +180,12 @@ class AuthState(rx.State):
         Called from client-side JavaScript.
         """
         # Singleton gate: prevent parallel restoration attempts
-        if AuthState._session_restore_in_progress:
+        if self._session_restore_in_progress:
             print("[DEBUG] Session restore already in progress, skipping...")
             return
         
         if user_id and user_email and access_token:
-            AuthState._session_restore_in_progress = True
+            self._session_restore_in_progress = True
             try:
                 self.user = {
                     "id": user_id,
@@ -203,7 +196,7 @@ class AuthState(rx.State):
                 
                 # Try to set the session in Supabase client for API calls
                 try:
-                    supabase = get_supabase_auth()
+                    supabase = create_supabase_auth()
                     supabase.auth.set_session(access_token, refresh_token)
                     
                     # Get the new session with refreshed tokens
@@ -224,7 +217,7 @@ class AuthState(rx.State):
                 except Exception as e:
                     print(f"[DEBUG] Could not restore Supabase session: {e}")
             finally:
-                AuthState._session_restore_in_progress = False
+                self._session_restore_in_progress = False
     
     def clear_error(self):
         """Clear any error messages."""
@@ -240,13 +233,13 @@ class AuthState(rx.State):
             return
         
         # Singleton gate to prevent parallel refresh attempts
-        if AuthState._session_restore_in_progress:
+        if self._session_restore_in_progress:
             print("[Auth] Refresh already in progress, skipping...")
             return
         
-        AuthState._session_restore_in_progress = True
+        self._session_restore_in_progress = True
         try:
-            supabase = get_supabase_auth()
+            supabase = create_supabase_auth()
             
             # Use the refresh token to get a new session
             response = supabase.auth.refresh_session(self.refresh_token)
@@ -274,7 +267,7 @@ class AuthState(rx.State):
         except Exception as e:
             print(f"[Auth] Proactive refresh failed: {e}")
         finally:
-            AuthState._session_restore_in_progress = False
+            self._session_restore_in_progress = False
 
     async def try_restore_from_storage(self):
         """
@@ -326,11 +319,11 @@ class AuthState(rx.State):
             
             if access_token and user_id and user_email:
                 # Singleton gate: prevent parallel restoration attempts
-                if AuthState._session_restore_in_progress:
+                if self._session_restore_in_progress:
                     print("[DEBUG] Session restore already in progress, skipping...")
                     return
                 
-                AuthState._session_restore_in_progress = True
+                self._session_restore_in_progress = True
                 try:
                     # Restore the session
                     self.user = {
@@ -342,7 +335,7 @@ class AuthState(rx.State):
                     
                     # Set session in Supabase client for API calls
                     try:
-                        supabase = get_supabase_auth()
+                        supabase = create_supabase_auth()
                         if refresh_token:
                             supabase.auth.set_session(access_token, refresh_token)
                         
@@ -386,7 +379,7 @@ class AuthState(rx.State):
                     self.session_checked = True
                     yield rx.call_script("window._tytoRestoreInProgress = false;")
                 finally:
-                    AuthState._session_restore_in_progress = False
+                    self._session_restore_in_progress = False
             else:
                 # No valid tokens — clear stale tokens to break redirect loop, then redirect
                 self.session_checked = True
