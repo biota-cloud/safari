@@ -16,6 +16,7 @@ from modules.training import run_detail as training_run_detail  # noqa: F401
 from modules.inference import playground as inference_playground  # noqa: F401
 from modules.inference import result_viewer as inference_result_viewer  # noqa: F401
 from modules.api import page as api_settings  # noqa: F401
+from modules.evaluation import page as evaluation_page  # noqa: F401
 
 
 

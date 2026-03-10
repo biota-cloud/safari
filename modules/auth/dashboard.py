@@ -902,7 +902,68 @@ def inference_api_card() -> rx.Component:
             "border": f"1px solid {styles.BORDER}",
             "border_radius": styles.RADIUS_LG,
             "overflow": "hidden",
-            "width": "360px",  # Match Projects column width
+        }
+    )
+
+
+def evaluation_card() -> rx.Component:
+    """Model Evaluation panel with link to evaluation page."""
+    return rx.box(
+        rx.vstack(
+            # Header with gradient
+            rx.box(
+                rx.hstack(
+                    rx.icon("bar-chart-3", size=24, color=styles.EARTH_SIENNA),
+                    rx.vstack(
+                        rx.text("Model Evaluation", size="3", weight="bold", style={"color": styles.TEXT_PRIMARY}),
+                        rx.text("Compare models against ground truth", size="1", style={"color": styles.TEXT_SECONDARY}),
+                        spacing="0",
+                        align="start",
+                    ),
+                    spacing="3",
+                    align="center",
+                    width="100%",
+                ),
+                style={
+                    "background": f"linear-gradient(135deg, {styles.BG_SECONDARY} 0%, {styles.EARTH_SIENNA}15 100%)",
+                    "padding": styles.SPACING_4,
+                    "border_radius": f"{styles.RADIUS_LG} {styles.RADIUS_LG} 0 0",
+                    "width": "100%",
+                }
+            ),
+            
+            # Content
+            rx.box(
+                rx.vstack(
+                    rx.link(
+                        rx.button(
+                            rx.icon("bar-chart-3", size=14),
+                            "Open Evaluation",
+                            size="2",
+                            style={"width": "100%"},
+                        ),
+                        href="/evaluation",
+                        style={"width": "100%"},
+                    ),
+                    rx.text(
+                        "Per-class metrics, confusion matrix, and model comparison",
+                        size="1",
+                        style={"color": styles.TEXT_SECONDARY, "text_align": "center"}
+                    ),
+                    spacing="2",
+                    width="100%",
+                ),
+                style={"padding": styles.SPACING_3},
+            ),
+            
+            spacing="0",
+            width="100%",
+        ),
+        style={
+            "background": styles.BG_SECONDARY,
+            "border": f"1px solid {styles.BORDER}",
+            "border_radius": styles.RADIUS_LG,
+            "overflow": "hidden",
         }
     )
 
@@ -1120,8 +1181,14 @@ def hub_content() -> rx.Component:
             }
         ),
         
-        # Bottom: Inference API (full width)
-        inference_api_card(),
+        # Bottom row: Inference Playground + Model Evaluation (2-column)
+        rx.grid(
+            inference_api_card(),
+            evaluation_card(),
+            columns="2",
+            spacing="4",
+            width="100%",
+        ),
         
         spacing="4",
         width="100%",

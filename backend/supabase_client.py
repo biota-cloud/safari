@@ -3613,3 +3613,167 @@ def get_api_usage_stats(
         "failed_requests": failed,
         "by_model": by_model,
     }
+
+
+# =============================================================================
+# MODEL EVALUATION
+# =============================================================================
+
+
+def create_evaluation_run(
+    project_id: str,
+    user_id: str,
+    model_id: str,
+    model_name: str,
+    dataset_id: str,
+    dataset_name: str,
+    classes_snapshot: list[str],
+    confidence_threshold: float = 0.25,
+    iou_threshold: float = 0.5,
+    total_images: int = 0,
+) -> dict | None:
+    """Create a new evaluation run record."""
+    supabase = get_supabase()
+    data = {
+        "project_id": project_id,
+        "user_id": user_id,
+        "model_id": model_id,
+        "model_name": model_name,
+        "dataset_id": dataset_id,
+        "dataset_name": dataset_name,
+        "classes_snapshot": classes_snapshot,
+        "confidence_threshold": confidence_threshold,
+        "iou_threshold": iou_threshold,
+        "total_images": total_images,
+        "status": "pending",
+    }
+    result = supabase.table("evaluation_runs").insert(data).execute()
+    return result.data[0] if result.data else None
+
+
+def update_evaluation_run(run_id: str, **updates) -> dict | None:
+    """Update an evaluation run's fields (status, metrics, progress, etc.)."""
+    supabase = get_supabase()
+    result = (
+        supabase.table("evaluation_runs")
+        .update(updates)
+        .eq("id", run_id)
+        .execute()
+    )
+    return result.data[0] if result.data else None
+
+
+def get_evaluation_runs(project_id: str) -> list[dict]:
+    """Get all evaluation runs for a project, newest first."""
+    supabase = get_supabase()
+    result = (
+        supabase.table("evaluation_runs")
+        .select("*")
+        .eq("project_id", project_id)
+        .order("created_at", desc=True)
+        .execute()
+    )
+    return result.data or []
+
+
+def get_evaluation_run(run_id: str) -> dict | None:
+    """Get a single evaluation run with all metrics."""
+    supabase = get_supabase()
+    result = (
+        supabase.table("evaluation_runs")
+        .select("*")
+        .eq("id", run_id)
+        .single()
+        .execute()
+    )
+    return result.data if result.data else None
+
+
+def delete_evaluation_run(run_id: str) -> bool:
+    """Delete an evaluation run (cascade deletes predictions)."""
+    supabase = get_supabase()
+    result = (
+        supabase.table("evaluation_runs")
+        .delete()
+        .eq("id", run_id)
+        .execute()
+    )
+    return bool(result.data)
+
+
+def create_evaluation_predictions_batch(predictions: list[dict]) -> int:
+    """
+    Batch insert evaluation prediction records.
+
+    Args:
+        predictions: List of dicts with keys:
+            evaluation_run_id, image_id, image_filename, image_r2_path,
+            ground_truth, predictions, matches, tp_count, fp_count, fn_count
+
+    Returns:
+        Number of records inserted.
+    """
+    if not predictions:
+        return 0
+    supabase = get_supabase()
+    result = supabase.table("evaluation_predictions").insert(predictions).execute()
+    return len(result.data) if result.data else 0
+
+
+def get_evaluation_predictions(
+    run_id: str,
+    page: int = 0,
+    page_size: int = 50,
+    class_filter: str | None = None,
+    match_type: str | None = None,
+) -> list[dict]:
+    """
+    Get paginated evaluation predictions for a run.
+
+    Args:
+        run_id: Evaluation run UUID
+        page: Page number (0-indexed)
+        page_size: Items per page
+        class_filter: Optional class name to filter by
+        match_type: Optional 'fp', 'fn', or 'tp' — filters images with that match type > 0
+
+    Returns:
+        List of prediction records
+    """
+    supabase = get_supabase()
+    start = page * page_size
+    end = start + page_size - 1
+
+    query = (
+        supabase.table("evaluation_predictions")
+        .select("*")
+        .eq("evaluation_run_id", run_id)
+    )
+
+    if match_type == "fp":
+        query = query.gt("fp_count", 0)
+    elif match_type == "fn":
+        query = query.gt("fn_count", 0)
+    elif match_type == "tp":
+        query = query.gt("tp_count", 0)
+
+    result = (
+        query
+        .order("fn_count", desc=True)  # Show worst images first
+        .range(start, end)
+        .execute()
+    )
+    return result.data or []
+
+
+def get_evaluation_prediction_detail(prediction_id: str) -> dict | None:
+    """Get a single evaluation prediction with full match data."""
+    supabase = get_supabase()
+    result = (
+        supabase.table("evaluation_predictions")
+        .select("*")
+        .eq("id", prediction_id)
+        .single()
+        .execute()
+    )
+    return result.data if result.data else None
