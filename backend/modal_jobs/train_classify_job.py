@@ -258,8 +258,14 @@ def train_classifier(
                 download_dir, image_urls, train_split_ratio, val_image_urls, download_file,
             )
             
+            # Merge val_annotations into annotations so crops are created for both splits.
+            # The train_filenames/val_filenames sets determine which split each crop goes to.
+            all_annotations = dict(annotations)
+            if val_annotations:
+                all_annotations.update(val_annotations)
+            
             crop_counts, class_counts = create_classification_crops(
-                dataset_dir, download_dir, annotations, classes,
+                dataset_dir, download_dir, all_annotations, classes,
                 train_filenames, val_filenames, crop_image_from_annotation,
             )
             

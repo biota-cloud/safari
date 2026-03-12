@@ -546,7 +546,15 @@ def prediction_card(pred: rx.Var) -> rx.Component:
             rx.hstack(
                 rx.badge("TP: " + pred["tp_count"].to(str), color_scheme="green", size="1"),
                 rx.badge("FP: " + pred["fp_count"].to(str), color_scheme="red", size="1"),
-                rx.badge("FN: " + pred["fn_count"].to(str), color_scheme="orange", size="1"),
+                rx.cond(
+                    pred["fn_misclass_count"] > 0,
+                    rx.hstack(
+                        rx.badge("Missed: " + pred["fn_missed_count"].to(str), color_scheme="orange", size="1"),
+                        rx.badge("Misclass: " + pred["fn_misclass_count"].to(str), color_scheme="yellow", size="1"),
+                        spacing="1",
+                    ),
+                    rx.badge("FN: " + pred["fn_count"].to(str), color_scheme="orange", size="1"),
+                ),
                 spacing="2",
             ),
             rx.button(
@@ -576,9 +584,12 @@ def drill_down_gallery() -> rx.Component:
                 rx.spacer(),
                 rx.hstack(
                     rx.button("All", size="1", variant=rx.cond(EvaluationState.drill_down_type == "", "solid", "outline"), on_click=EvaluationState.set_drill_down_type("")),
+                    rx.button("TP", size="1", variant=rx.cond(EvaluationState.drill_down_type == "tp", "solid", "outline"), color_scheme="green", on_click=EvaluationState.set_drill_down_type("tp")),
                     rx.button("FP", size="1", variant=rx.cond(EvaluationState.drill_down_type == "fp", "solid", "outline"), color_scheme="red", on_click=EvaluationState.set_drill_down_type("fp")),
                     rx.button("FN", size="1", variant=rx.cond(EvaluationState.drill_down_type == "fn", "solid", "outline"), color_scheme="orange", on_click=EvaluationState.set_drill_down_type("fn")),
-                    rx.button("TP", size="1", variant=rx.cond(EvaluationState.drill_down_type == "tp", "solid", "outline"), color_scheme="green", on_click=EvaluationState.set_drill_down_type("tp")),
+                    rx.text("|", size="1", style={"color": styles.BORDER}),
+                    rx.button("Missed", size="1", variant=rx.cond(EvaluationState.drill_down_type == "fn_missed", "solid", "outline"), color_scheme="orange", on_click=EvaluationState.set_drill_down_type("fn_missed")),
+                    rx.button("Misclass", size="1", variant=rx.cond(EvaluationState.drill_down_type == "fn_misclass", "solid", "outline"), color_scheme="yellow", on_click=EvaluationState.set_drill_down_type("fn_misclass")),
                     spacing="1",
                 ),
                 rx.cond(
@@ -748,7 +759,61 @@ def image_detail_modal() -> rx.Component:
                     rx.badge("TP: " + EvaluationState.detail_tp.to(str), color_scheme="green", size="2"),
                     rx.badge("FP: " + EvaluationState.detail_fp.to(str), color_scheme="red", size="2"),
                     rx.badge("FN: " + EvaluationState.detail_fn.to(str), color_scheme="orange", size="2"),
+                    rx.spacer(),
+                    rx.text(
+                        EvaluationState.detail_gt_count.to(str) + " GT · " + EvaluationState.detail_pred_count.to(str) + " predictions",
+                        size="1",
+                        style={"color": styles.TEXT_SECONDARY},
+                    ),
                     spacing="2",
+                    align="center",
+                    width="100%",
+                ),
+                # Match breakdown
+                rx.cond(
+                    EvaluationState.detail_match_breakdown.length() > 0,
+                    rx.box(
+                        rx.vstack(
+                            rx.text("Match Details", size="1", weight="medium", style={"color": styles.TEXT_SECONDARY}),
+                            rx.foreach(
+                                EvaluationState.detail_match_breakdown,
+                                lambda m: rx.hstack(
+                                    rx.text(
+                                        rx.cond(m["match_type"] == "tp", "✓", "✗"),
+                                        size="1",
+                                        weight="bold",
+                                        style={"color": rx.cond(
+                                            m["match_type"] == "tp",
+                                            styles.SUCCESS,
+                                            rx.cond(m["match_type"] == "fp", styles.ERROR, styles.WARNING),
+                                        )},
+                                    ),
+                                    rx.text(m["class_name"], size="1", weight="medium", style={"color": styles.TEXT_PRIMARY}),
+                                    rx.text("—", size="1", style={"color": styles.TEXT_SECONDARY}),
+                                    rx.badge(
+                                        m["match_type"].upper(),
+                                        size="1",
+                                        color_scheme=rx.cond(
+                                            m["match_type"] == "tp", "green",
+                                            rx.cond(m["match_type"] == "fp", "red", "orange"),
+                                        ),
+                                    ),
+                                    rx.text(m["detail"], size="1", style={"color": styles.TEXT_SECONDARY, "font_style": "italic"}),
+                                    spacing="1",
+                                    align="center",
+                                ),
+                            ),
+                            spacing="1",
+                            width="100%",
+                        ),
+                        style={
+                            "background": styles.BG_TERTIARY,
+                            "border": f"1px solid {styles.BORDER}",
+                            "border_radius": styles.RADIUS_SM,
+                            "padding": styles.SPACING_2,
+                            "width": "100%",
+                        },
+                    ),
                 ),
                 rx.hstack(
                     rx.hstack(

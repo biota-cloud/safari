@@ -79,6 +79,8 @@ class EvalPredRow(TypedDict):
     tp_count: int
     fp_count: int
     fn_count: int
+    fn_missed_count: int     # Unmatched GT (no detection)
+    fn_misclass_count: int   # Detected but wrong class
 
 
 class PerClassRow(TypedDict):
@@ -98,6 +100,13 @@ class ComparisonDelta(TypedDict):
     class_name: str
     delta_display: str    # "+12%" or "-5%"
     is_improved: bool
+
+
+class MatchBreakdownRow(TypedDict):
+    """Per-annotation match result for detail view."""
+    match_type: str       # "tp", "fp", "fn"
+    class_name: str
+    detail: str           # e.g. "IoU 0.87" or "missed" or "spurious 72%"
 
 
 # =============================================================================
@@ -196,6 +205,9 @@ class EvaluationState(rx.State):
     # ── Detail bounding boxes (for CSS overlay) ───────────────────────
     detail_gt_boxes: list[dict] = []    # [{x1, y1, x2, y2, class_name}]
     detail_pred_boxes: list[dict] = []  # [{x1, y1, x2, y2, class_name, confidence}]
+    detail_match_breakdown: list[MatchBreakdownRow] = []
+    detail_gt_count: int = 0
+    detail_pred_count: int = 0
 
     # ── Delete confirmation ───────────────────────────────────────────
     delete_run_id: str = ""
@@ -341,7 +353,7 @@ class EvaluationState(rx.State):
             supabase.table("datasets")
             .select("id, name")
             .eq("project_id", self.selected_project_id)
-            .eq("usage_tag", "evaluation")
+            .eq("usage_tag", "validation")
             .order("created_at", desc=True)
             .execute()
         )
@@ -783,13 +795,42 @@ class EvaluationState(rx.State):
             )
             all_image_results.append(result)
 
-            # Build typed pred row with recomputed counts
+            # Build typed pred row — filter by drill-down class if active
+            if self.drill_down_class:
+                cls = self.drill_down_class
+                img_tp = sum(1 for m in result.get("tp_details", []) if m.get("gt_class") == cls)
+                # FP: spurious predictions of this class + misclassified as this class
+                img_fp = sum(
+                    1 for m in result.get("fp_details", [])
+                    if m.get("pred_class") == cls
+                )
+                # FN missed: unmatched GT of this class (no detection at all)
+                img_fn_missed = sum(1 for m in result.get("fn_details", []) if m.get("gt_class") == cls)
+                # FN misclassified: detected but classified as wrong species
+                img_fn_misclass = sum(
+                    1 for m in result.get("fp_details", [])
+                    if m.get("type") != "spurious" and m.get("gt_class") == cls
+                )
+                img_fn = img_fn_missed + img_fn_misclass
+            else:
+                img_tp = result["tp"]
+                img_fp = result["fp"]
+                img_fn = result["fn"]
+                # Split FN for unfiltered view too
+                img_fn_missed = len(result.get("fn_details", []))
+                img_fn_misclass = sum(
+                    1 for m in result.get("fp_details", [])
+                    if m.get("type") != "spurious"
+                )
+
             pred_rows.append(EvalPredRow(
                 id=raw.get("id", ""),
                 image_filename=raw.get("image_filename", ""),
-                tp_count=result["tp"],
-                fp_count=result["fp"],
-                fn_count=result["fn"],
+                tp_count=img_tp,
+                fp_count=img_fp,
+                fn_count=img_fn,
+                fn_missed_count=img_fn_missed,
+                fn_misclass_count=img_fn_misclass,
             ))
 
         # Aggregate metrics
@@ -821,6 +862,22 @@ class EvaluationState(rx.State):
             self.computed_recall = 0
             self.computed_f1 = 0
             self.per_class_data = []
+
+        # Apply match-type filter (tp/fp/fn/fn_missed/fn_misclass) to pred_rows
+        if self.drill_down_type == "tp":
+            pred_rows = [r for r in pred_rows if r["tp_count"] > 0]
+        elif self.drill_down_type == "fp":
+            pred_rows = [r for r in pred_rows if r["fp_count"] > 0]
+        elif self.drill_down_type == "fn":
+            pred_rows = [r for r in pred_rows if r["fn_count"] > 0]
+        elif self.drill_down_type == "fn_missed":
+            pred_rows = [r for r in pred_rows if r["fn_missed_count"] > 0]
+        elif self.drill_down_type == "fn_misclass":
+            pred_rows = [r for r in pred_rows if r["fn_misclass_count"] > 0]
+
+        # Also filter out images with zero relevance when a class filter is active
+        if self.drill_down_class:
+            pred_rows = [r for r in pred_rows if r["tp_count"] > 0 or r["fp_count"] > 0 or r["fn_count"] > 0]
 
         # Update predictions list (paginated view)
         start = self.predictions_page * 50
@@ -896,12 +953,12 @@ class EvaluationState(rx.State):
     async def set_drill_down_class(self, cls: str):
         self.drill_down_class = cls
         self.predictions_page = 0
-        await self.load_predictions_page()
+        self._recompute_metrics()
 
     async def set_drill_down_type(self, match_type: str):
         self.drill_down_type = match_type
         self.predictions_page = 0
-        await self.load_predictions_page()
+        self._recompute_metrics()
 
     async def load_predictions_page(self):
         if not self.active_run.get("id"):
@@ -909,46 +966,66 @@ class EvaluationState(rx.State):
         raw = get_evaluation_predictions(
             run_id=self.active_run["id"],
             page=self.predictions_page,
-            class_filter=self.drill_down_class or None,
             match_type=self.drill_down_type or None,
         )
         self.active_predictions = [_pred_to_row(p) for p in raw]
 
     async def next_predictions_page(self):
         self.predictions_page += 1
-        await self.load_predictions_page()
+        if self.drill_down_class or self.drill_down_type:
+            self._recompute_metrics()
+        else:
+            await self.load_predictions_page()
 
     async def prev_predictions_page(self):
         if self.predictions_page > 0:
             self.predictions_page -= 1
-            await self.load_predictions_page()
+            if self.drill_down_class or self.drill_down_type:
+                self._recompute_metrics()
+            else:
+                await self.load_predictions_page()
 
     async def view_image_detail(self, prediction_id: str):
-        """Load single image detail with bounding boxes."""
+        """Load single image detail with bounding boxes, recomputed at analysis_confidence."""
         detail = get_evaluation_prediction_detail(prediction_id)
         if detail:
             self.detail_image_filename = detail.get("image_filename", "")
-            self.detail_tp = detail.get("tp_count", 0)
-            self.detail_fp = detail.get("fp_count", 0)
-            self.detail_fn = detail.get("fn_count", 0)
             r2_path = detail.get("image_r2_path", "")
             if r2_path:
                 r2_client = R2Client()
                 self.detail_image_url = r2_client.generate_presigned_url(r2_path)
 
-            # Get class list from the evaluation run
-            run_id = detail.get("evaluation_run_id", "")
-            run_classes = []
-            if run_id:
-                try:
-                    supabase = get_supabase()
-                    run_data = supabase.table("evaluation_runs").select("classes_snapshot").eq("id", run_id).single().execute()
-                    run_classes = (run_data.data or {}).get("classes_snapshot", []) or []
-                except Exception:
-                    pass
+            # Get class list — prefer cached active_run, fallback to DB
+            run_classes = self.active_run.get("classes_snapshot", []) or []
+            if not run_classes:
+                run_id = detail.get("evaluation_run_id", "")
+                if run_id:
+                    try:
+                        supabase = get_supabase()
+                        run_data = supabase.table("evaluation_runs").select("classes_snapshot").eq("id", run_id).single().execute()
+                        run_classes = (run_data.data or {}).get("classes_snapshot", []) or []
+                    except Exception:
+                        pass
 
-            # Load GT boxes — resolve class_id to class name
             gt_raw = detail.get("ground_truth", []) or []
+            pred_raw = detail.get("predictions", []) or []
+            iou = self.active_run.get("iou_threshold", 0.3)
+
+            # Recompute matching at current analysis_confidence
+            # Note: predictions stored as int 0-100 (see line 636)
+            conf_threshold = self.analysis_confidence * 100
+            result = match_predictions_to_gt(
+                gt_annotations=gt_raw,
+                predictions=pred_raw,
+                iou_threshold=iou,
+                classes=run_classes,
+                confidence_threshold=conf_threshold,
+            )
+            self.detail_tp = result["tp"]
+            self.detail_fp = result["fp"]
+            self.detail_fn = result["fn"]
+
+            # Build GT boxes
             self.detail_gt_boxes = []
             for gt in gt_raw:
                 x = gt.get("x", 0)
@@ -963,10 +1040,11 @@ class EvaluationState(rx.State):
                     "confidence": 0,
                 })
 
-            # Load prediction boxes
-            pred_raw = detail.get("predictions", []) or []
+            # Build prediction boxes — only those above confidence threshold
             self.detail_pred_boxes = []
             for pred in pred_raw:
+                if pred.get("confidence", 0) < conf_threshold:
+                    continue
                 box = pred.get("box", [])
                 if box and len(box) == 4:
                     self.detail_pred_boxes.append({
@@ -974,6 +1052,39 @@ class EvaluationState(rx.State):
                         "class_name": pred.get("class_name", "?"),
                         "confidence": pred.get("confidence", 0),
                     })
+
+            # Counts for header
+            self.detail_gt_count = len(gt_raw)
+            self.detail_pred_count = len(self.detail_pred_boxes)
+
+            # Build match breakdown for per-annotation detail
+            breakdown = []
+            for m in result.get("tp_details", []):
+                breakdown.append(MatchBreakdownRow(
+                    match_type="tp",
+                    class_name=m.get("gt_class", "?"),
+                    detail=f"IoU {m.get('iou', 0):.2f}",
+                ))
+            for m in result.get("fp_details", []):
+                if m.get("type") == "spurious":
+                    breakdown.append(MatchBreakdownRow(
+                        match_type="fp",
+                        class_name=m.get("pred_class", "?"),
+                        detail="spurious",
+                    ))
+                else:
+                    breakdown.append(MatchBreakdownRow(
+                        match_type="fp",
+                        class_name=f"{m.get('pred_class', '?')} (GT: {m.get('gt_class', '?')})",
+                        detail=f"misclassified, IoU {m.get('iou', 0):.2f}",
+                    ))
+            for m in result.get("fn_details", []):
+                breakdown.append(MatchBreakdownRow(
+                    match_type="fn",
+                    class_name=m.get("gt_class", "?"),
+                    detail="missed",
+                ))
+            self.detail_match_breakdown = breakdown
 
             self.show_detail_modal = True
 

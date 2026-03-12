@@ -366,7 +366,7 @@ def main():
             project_id=args.project_id,
             name=args.dataset_name,
             type="image",
-            usage_tag="evaluation",
+            usage_tag="validation",
         )
         if not dataset:
             print("  Failed to create dataset. Exiting.")

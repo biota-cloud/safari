@@ -3724,7 +3724,6 @@ def get_evaluation_predictions(
     run_id: str,
     page: int = 0,
     page_size: int = 50,
-    class_filter: str | None = None,
     match_type: str | None = None,
 ) -> list[dict]:
     """
@@ -3734,7 +3733,6 @@ def get_evaluation_predictions(
         run_id: Evaluation run UUID
         page: Page number (0-indexed)
         page_size: Items per page
-        class_filter: Optional class name to filter by
         match_type: Optional 'fp', 'fn', or 'tp' — filters images with that match type > 0
 
     Returns:
