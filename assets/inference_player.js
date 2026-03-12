@@ -355,8 +355,8 @@
             masks.forEach((mask) => {
                 if (!mask.polygon || mask.polygon.length < 3) return;
 
-                // Generate color based on class_id (SAFARI Naturalist palette)
-                const hue = (mask.class_id * 137 + 30) % 360;
+                // Generate color based on class_id (vibrant palette)
+                const hue = (mask.class_id * 137) % 360;
 
                 // Draw filled polygon
                 ctx.beginPath();
@@ -373,11 +373,11 @@
                 }
 
                 ctx.closePath();
-                ctx.fillStyle = `hsla(${hue}, 45%, 42%, 0.35)`;
+                ctx.fillStyle = `hsla(${hue}, 70%, 50%, 0.35)`;
                 ctx.fill();
 
                 // Draw polygon outline
-                ctx.strokeStyle = `hsl(${hue}, 45%, 42%)`;
+                ctx.strokeStyle = `hsl(${hue}, 70%, 50%)`;
                 ctx.lineWidth = 1;
                 ctx.stroke();
             });
@@ -408,9 +408,9 @@
             const w = normW * renderWidth;
             const h = normH * renderHeight;
 
-            // Generate color based on class_id (SAFARI Naturalist palette)
-            const hue = (label.class_id * 137 + 30) % 360;
-            const color = `hsl(${hue}, 45%, 42%)`;
+            // Generate color based on class_id (vibrant palette)
+            const hue = (label.class_id * 137) % 360;
+            const color = `hsl(${hue}, 70%, 50%)`;
 
             // Draw box
             ctx.strokeStyle = color;

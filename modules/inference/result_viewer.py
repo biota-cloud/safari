@@ -14,6 +14,139 @@ from modules.inference.video_player import inference_video_player
 from modules.inference.playground import mask_overlays, classification_crops_gallery
 
 
+def batch_result_viewer() -> rx.Component:
+    """Batch result viewer with image navigation and overlays."""
+    return rx.vstack(
+        # Hidden trigger inputs for keyboard navigation (A/D keys)
+        rx.input(
+            id="batch-fullview-next-trigger",
+            on_change=InferenceState.batch_preview_next_trigger,
+            type="text",
+            style={"position": "absolute", "opacity": "0", "height": "0", "width": "0", "pointer_events": "none", "z_index": "-1"},
+        ),
+        rx.input(
+            id="batch-fullview-prev-trigger",
+            on_change=InferenceState.batch_preview_prev_trigger,
+            type="text",
+            style={"position": "absolute", "opacity": "0", "height": "0", "width": "0", "pointer_events": "none", "z_index": "-1"},
+        ),
+        # Navigation header
+        rx.hstack(
+            rx.icon_button(
+                rx.icon("chevron-left", size=20),
+                size="2",
+                variant="ghost",
+                on_click=InferenceState.batch_preview_prev,
+                disabled=InferenceState.preview_batch_index == 0,
+            ),
+            rx.text(
+                (InferenceState.preview_batch_index + 1).to(str) + " / " + InferenceState.preview_batch_count.to(str),
+                size="3",
+                weight="medium",
+                style={"color": styles.TEXT_SECONDARY, "min_width": "60px", "text_align": "center"},
+            ),
+            rx.icon_button(
+                rx.icon("chevron-right", size=20),
+                size="2",
+                variant="ghost",
+                on_click=InferenceState.batch_preview_next,
+                disabled=InferenceState.preview_batch_index >= InferenceState.preview_batch_count - 1,
+            ),
+            rx.spacer(),
+            rx.text(
+                InferenceState.preview_batch_current_filename,
+                size="2",
+                style={"color": styles.TEXT_SECONDARY},
+            ),
+            width="100%",
+            align="center",
+            justify="center",
+            padding=styles.SPACING_2,
+        ),
+        # Image display with overlays
+        rx.center(
+            rx.box(
+                rx.image(
+                    src=InferenceState.preview_batch_current_url,
+                    style={
+                        "max_width": "100%",
+                        "max_height": "70vh",
+                        "width": "auto",
+                        "height": "auto",
+                        "display": "block",
+                    },
+                    border_radius=styles.RADIUS_MD,
+                ),
+                # Segmentation masks
+                rx.cond(
+                    InferenceState.show_masks_fullview & (InferenceState.preview_batch_current_masks_css.length() > 0),
+                    mask_overlays(InferenceState.preview_batch_current_masks_css),
+                    rx.fragment(),
+                ),
+                # Bounding boxes
+                rx.foreach(
+                    InferenceState.preview_batch_current_predictions,
+                    lambda pred: rx.box(
+                        rx.text(
+                            pred["class_name"].to(str) + " " + (pred["confidence"].to(float) * 100).to(int).to(str) + "%",
+                            size="1",
+                            style={
+                                "color": "#000",
+                                "background": "rgba(0, 255, 0, 0.85)",
+                                "padding": "2px 6px",
+                                "font_size": "12px",
+                                "white_space": "nowrap",
+                                "position": "absolute",
+                                "top": "-20px",
+                                "left": "0",
+                            },
+                        ),
+                        style={
+                            "position": "absolute",
+                            "left": (pred["box"][0].to(float) * 100).to(str) + "%",
+                            "top": (pred["box"][1].to(float) * 100).to(str) + "%",
+                            "width": ((pred["box"][2].to(float) - pred["box"][0].to(float)) * 100).to(str) + "%",
+                            "height": ((pred["box"][3].to(float) - pred["box"][1].to(float)) * 100).to(str) + "%",
+                            "border": "3px solid #00ff00",
+                            "pointer_events": "none",
+                        },
+                    ),
+                ),
+                position="relative",
+                display="inline-block",
+            ),
+            width="100%",
+            padding=styles.SPACING_4,
+        ),
+        # Install keyboard listener on mount
+        on_mount=rx.call_script(
+            """
+            window._batchFullviewKeyHandler = function(e) {
+                var triggerId = null;
+                if (e.key === 'd' || e.key === 'ArrowRight') triggerId = 'batch-fullview-next-trigger';
+                else if (e.key === 'a' || e.key === 'ArrowLeft') triggerId = 'batch-fullview-prev-trigger';
+                if (triggerId) {
+                    e.preventDefault();
+                    var inp = document.getElementById(triggerId);
+                    if (inp) {
+                        var nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+                        nativeInputValueSetter.call(inp, Date.now().toString());
+                        inp.dispatchEvent(new Event('input', { bubbles: true }));
+                        inp.dispatchEvent(new Event('change', { bubbles: true }));
+                    }
+                }
+            };
+            document.addEventListener('keydown', window._batchFullviewKeyHandler);
+            """
+        ),
+        on_unmount=rx.call_script(
+            "if (window._batchFullviewKeyHandler) { document.removeEventListener('keydown', window._batchFullviewKeyHandler); window._batchFullviewKeyHandler = null; }"
+        ),
+        spacing="2",
+        width="100%",
+    )
+
+
 def image_result_viewer() -> rx.Component:
     """Image result viewer with bounding box and mask overlays."""
     return rx.center(
@@ -134,16 +267,14 @@ def result_viewer() -> rx.Component:
         # Conditional content based on input type
         rx.center(
             rx.box(
-                rx.cond(
-                    InferenceState.current_result_input_type == "video",
-                    inference_video_player(),
-                    rx.cond(
-                        InferenceState.current_result_input_type == "image",
-                        image_result_viewer(),
-                        rx.center(
-                            rx.text("Loading result...", size="2", style={"color": styles.TEXT_SECONDARY}),
-                            padding=styles.SPACING_6,
-                        ),
+                rx.match(
+                    InferenceState.current_result_input_type,
+                    ("video", inference_video_player()),
+                    ("image", image_result_viewer()),
+                    ("batch", batch_result_viewer()),
+                    rx.center(
+                        rx.text("Loading result...", size="2", style={"color": styles.TEXT_SECONDARY}),
+                        padding=styles.SPACING_6,
                     ),
                 ),
                 width="100%",

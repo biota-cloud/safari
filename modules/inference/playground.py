@@ -1275,6 +1275,19 @@ def preview_modal() -> rx.Component:
     """Modal for previewing inference results in-place."""
     return rx.dialog.root(
         rx.dialog.content(
+            # Hidden inputs for keyboard navigation (same pattern as editors)
+            rx.input(
+                id="batch-next-trigger",
+                on_change=InferenceState.batch_preview_next_trigger,
+                type="text",
+                style={"position": "absolute", "opacity": "0", "height": "0", "width": "0", "pointer_events": "none", "z_index": "-1"},
+            ),
+            rx.input(
+                id="batch-prev-trigger",
+                on_change=InferenceState.batch_preview_prev_trigger,
+                type="text",
+                style={"position": "absolute", "opacity": "0", "height": "0", "width": "0", "pointer_events": "none", "z_index": "-1"},
+            ),
             rx.vstack(
                 # Header
                 rx.hstack(
@@ -1602,6 +1615,26 @@ def preview_modal() -> rx.Component:
                 "max_width": "700px",
                 "width": "90vw",
             },
+            on_open_auto_focus=lambda: rx.call_script(
+                """
+                window._previewKeyHandler = function(e) {
+                    var triggerId = null;
+                    if (e.key === 'd' || e.key === 'ArrowRight') triggerId = 'batch-next-trigger';
+                    else if (e.key === 'a' || e.key === 'ArrowLeft') triggerId = 'batch-prev-trigger';
+                    if (triggerId) {
+                        e.preventDefault();
+                        var inp = document.getElementById(triggerId);
+                        if (inp) {
+                            var nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+                            nativeInputValueSetter.call(inp, Date.now().toString());
+                            inp.dispatchEvent(new Event('input', { bubbles: true }));
+                            inp.dispatchEvent(new Event('change', { bubbles: true }));
+                        }
+                    }
+                };
+                document.addEventListener('keydown', window._previewKeyHandler);
+                """
+            ),
         ),
         open=InferenceState.is_preview_open,
         on_open_change=lambda open: InferenceState.set_preview_open(open),

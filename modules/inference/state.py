@@ -762,16 +762,22 @@ class InferenceState(rx.State):
             print(f"Error loading preview: {e}")
     
     def close_preview(self):
-        """Close the preview modal and cleanup JS player."""
+        """Close the preview modal and cleanup JS player + key listener."""
         self.is_preview_open = False
-        return rx.call_script("window.cleanupInferencePlayer && window.cleanupInferencePlayer()")
+        return rx.call_script(
+            "if (window._previewKeyHandler) { document.removeEventListener('keydown', window._previewKeyHandler); window._previewKeyHandler = null; }"
+            " window.cleanupInferencePlayer && window.cleanupInferencePlayer()"
+        )
     
     def set_preview_open(self, open: bool):
         """Set preview modal open state."""
         self.is_preview_open = open
-        # Cleanup JS player when closing
+        # Cleanup JS player + key listener when closing
         if not open:
-            return rx.call_script("window.cleanupInferencePlayer && window.cleanupInferencePlayer()")
+            return rx.call_script(
+                "if (window._previewKeyHandler) { document.removeEventListener('keydown', window._previewKeyHandler); window._previewKeyHandler = null; }"
+                " window.cleanupInferencePlayer && window.cleanupInferencePlayer()"
+            )
     
     def batch_preview_next(self):
         """Go to next image in batch preview."""
@@ -782,6 +788,14 @@ class InferenceState(rx.State):
         """Go to previous image in batch preview."""
         if self.preview_batch_index > 0:
             self.preview_batch_index -= 1
+
+    def batch_preview_next_trigger(self, _value: str = ""):
+        """Trigger: go to next image in batch preview (from hidden input)."""
+        self.batch_preview_next()
+
+    def batch_preview_prev_trigger(self, _value: str = ""):
+        """Trigger: go to previous image in batch preview (from hidden input)."""
+        self.batch_preview_prev()
     
     async def load_models(self):
         """Load all available models (built-in + custom) from Supabase."""
@@ -3415,6 +3429,30 @@ class InferenceState(rx.State):
                     self.current_result_masks = []
                 
                 print(f"Loaded image result with {len(self.current_result_predictions)} predictions, {len(self.current_result_masks)} masks")
+            
+            elif record["input_type"] == "batch":
+                # Batch result - reuse preview_batch_* state vars
+                batch_images = record.get("batch_images", [])
+                predictions_json = record.get("predictions_json", {})
+                batch_predictions = predictions_json.get("batch_predictions", [])
+                batch_masks = predictions_json.get("batch_masks", [])
+                
+                self.preview_batch_images = batch_images
+                self.preview_batch_predictions = batch_predictions
+                self.preview_batch_masks = batch_masks
+                self.preview_batch_index = 0
+                
+                # Generate presigned URLs for full-size images
+                self.preview_batch_urls = []
+                for img in batch_images:
+                    r2_path = img.get("r2_path", "")
+                    if r2_path:
+                        url = r2_client.generate_presigned_url(r2_path, expires_in=3600)
+                        self.preview_batch_urls.append(url)
+                    else:
+                        self.preview_batch_urls.append("")
+                
+                print(f"Loaded batch result with {len(batch_images)} images, {len(batch_predictions)} prediction sets")
         
         except Exception as e:
             print(f"Error loading inference result: {e}")
