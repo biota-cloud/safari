@@ -58,6 +58,20 @@ def batch_result_viewer() -> rx.Component:
                 size="2",
                 style={"color": styles.TEXT_SECONDARY},
             ),
+            # Overlay visibility toggle
+            rx.tooltip(
+                rx.icon_button(
+                    rx.icon(
+                        rx.cond(InferenceState.show_masks_fullview, "eye", "eye-off"),
+                        size=16,
+                    ),
+                    size="2",
+                    variant=rx.cond(InferenceState.show_masks_fullview, "soft", "ghost"),
+                    color_scheme="green",
+                    on_click=InferenceState.toggle_fullview_mask_visibility,
+                ),
+                content=rx.cond(InferenceState.show_masks_fullview, "Hide Overlays", "Show Overlays"),
+            ),
             width="100%",
             align="center",
             justify="center",
@@ -83,12 +97,12 @@ def batch_result_viewer() -> rx.Component:
                     mask_overlays(InferenceState.preview_batch_current_masks_css),
                     rx.fragment(),
                 ),
-                # Bounding boxes
+                # Bounding boxes (always visible)
                 rx.foreach(
                     InferenceState.preview_batch_current_predictions,
                     lambda pred: rx.box(
                         rx.text(
-                            pred["class_name"].to(str) + " " + (pred["confidence"].to(float) * 100).to(int).to(str) + "%",
+                            pred["class_name"].to(str) + " " + round(pred["confidence"].to(float) * 100).to(str) + "%",
                             size="1",
                             style={
                                 "color": "#000",
