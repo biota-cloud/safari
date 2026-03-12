@@ -1111,6 +1111,7 @@ class VideoLabelingState(rx.State):
                 f"  {annotation_render}"
                 f"  {js_time_end}"
                 f"  setTimeout(function() {{ {preload_script} }}, 1000); "  # Preload after 1s
+                f"  document.getElementById('vid-thumb-{video_id}')?.scrollIntoView({{block:'nearest',behavior:'smooth'}}); "
                 f"}}, 100);"
             )
 
@@ -3115,8 +3116,9 @@ class VideoLabelingState(rx.State):
     async def handle_autolabel_keydown(self, key: str):
         """Handle Enter key in autolabel prompt."""
         if key == "Enter" and self.autolabel_prompt.strip() and not self.is_autolabeling:
-            async for event in self.start_autolabel():
-                yield event
+            # Save prompt before starting
+            await self.save_autolabel_prompt_pref()
+            return type(self).start_autolabel
 
     async def confirm_rename_class(self):
         """Execute class renaming."""
@@ -3463,6 +3465,24 @@ class VideoLabelingState(rx.State):
         else:
             self.autolabel_prompt_terms = []
             self.autolabel_class_mappings = []
+
+    async def save_autolabel_prompt_pref(self, _value: str = ""):
+        """Save SAM3 prompt preference on blur."""
+        auth_state = await self.get_state(AuthState)
+        user_id = auth_state.user.get("id") if auth_state.user else None
+        if user_id:
+            update_user_preferences(user_id, "autolabel", {
+                "sam3_prompt": self.autolabel_prompt,
+            })
+
+    async def save_autolabel_confidence_pref(self, value=None):
+        """Save autolabel confidence preference."""
+        auth_state = await self.get_state(AuthState)
+        user_id = auth_state.user.get("id") if auth_state.user else None
+        if user_id:
+            update_user_preferences(user_id, "autolabel", {
+                "confidence": self.autolabel_confidence,
+            })
     
     def set_prompt_class_mapping(self, term_idx: int, class_name: str):
         """Set the class mapping for a specific prompt term."""
@@ -3497,7 +3517,7 @@ class VideoLabelingState(rx.State):
     # AUTOLABEL MODAL CONTROLS
     # =========================================================================
     
-    async def open_autolabel_modal(self):
+    async def open_autolabel_modal(self, _value=None):
         """Open autolabel modal and load available models."""
         self.show_autolabel_modal = True
         self.autolabel_error = ""
@@ -3511,6 +3531,15 @@ class VideoLabelingState(rx.State):
         user_id = auth_state.user.get("id") if auth_state.user else None
         if user_id:
             self.local_machines = get_user_local_machines(user_id)
+            # Restore autolabel preferences
+            prefs = get_user_preferences(user_id)
+            autolabel_prefs = prefs.get("autolabel", {})
+            saved_prompt = autolabel_prefs.get("sam3_prompt", "")
+            if saved_prompt and not self.autolabel_prompt:
+                self.set_autolabel_prompt(saved_prompt)
+            saved_confidence = autolabel_prefs.get("confidence")
+            if saved_confidence is not None:
+                self.autolabel_confidence = float(saved_confidence)
     
     def set_compute_target(self, value):
         """Set compute target (cloud/local)."""

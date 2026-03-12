@@ -660,6 +660,20 @@ def canvas_container() -> rx.Component:
                     "z_index": "-1"
                 }
             ),
+            # Hidden input for autolabel shortcut (L key)
+            rx.input(
+                id="autolabel-trigger",
+                on_change=LabelingState.open_autolabel_modal,
+                type="text",
+                style={
+                    "position": "absolute",
+                    "opacity": "0",
+                    "height": "0",
+                    "width": "0",
+                    "pointer_events": "none",
+                    "z_index": "-1"
+                }
+            ),
             # Hidden input for fullscreen toggle (F key)
             rx.input(
                 id="fullscreen-trigger",
@@ -986,6 +1000,7 @@ def autolabel_modal() -> rx.Component:
                         placeholder="e.g., 'elephant, fox, red car'",
                         value=LabelingState.autolabel_prompt,
                         on_change=LabelingState.set_autolabel_prompt,
+                        on_blur=LabelingState.save_autolabel_prompt_pref,
                         on_key_down=LabelingState.handle_autolabel_keydown,
                         disabled=LabelingState.is_autolabeling,
                         size="2",
@@ -1319,7 +1334,7 @@ def right_sidebar() -> rx.Component:
                         color_scheme="green",
                         size="2",
                         cursor="pointer",
-                        title="Auto-Label (A)"
+                        title="Auto-Label (L)"
                     ),
                     spacing="2",
                 ),
@@ -1555,6 +1570,7 @@ def shortcuts_help_modal() -> rx.Component:
                 shortcut_row("1-9", "Select class by number"),
                 rx.divider(style={"border_color": styles.BORDER}),
                 rx.text("Actions", size="1", weight="medium", style={"color": styles.ACCENT}),
+                shortcut_row("L", "Open Auto-Label"),
                 shortcut_row("Delete", "Delete selected box"),
                 shortcut_row("Escape", "Deselect / Cancel"),
                 rx.divider(style={"border_color": styles.BORDER}),

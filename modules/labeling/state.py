@@ -203,7 +203,12 @@ class LabelingState(rx.State):
         
         # Consistent zoom change (1.85 in focus, 1.0 back)
         target_scale = 1.85 if self.focus_mode else 1.0
-        return rx.call_script(f"window.animateTransform && window.animateTransform({target_scale}, 0, 0)")
+        # Force canvas resize after the 300ms panel slide animation completes
+        # by dispatching a native resize event, which the ResizeObserver picks up
+        return rx.call_script(
+            f"window.animateTransform && window.animateTransform({target_scale}, 0, 0);"
+            " setTimeout(function() { window.dispatchEvent(new Event('resize')); }, 350);"
+        )
     
     def reset_view(self):
         """Reset zoom and pan to default — delegates to JS."""
@@ -1021,7 +1026,9 @@ class LabelingState(rx.State):
     def set_current_class(self, idx: int):
         """Set the current class for new annotations."""
         self.current_class_id = idx
-        print(f"[Python] Current class set to: {idx} ({self.project_classes[idx] if idx < len(self.project_classes) else 'N/A'})")
+        class_name = self.project_classes[idx] if idx < len(self.project_classes) else "Unknown"
+        print(f"[Python] Current class set to: {idx} ({class_name})")
+        return rx.call_script(f"window.setCurrentClass && window.setCurrentClass({idx}, '{class_name}')")
 
     def handle_class_select(self, index_str: str):
         """Select class by keyboard shortcut (1-9 keys). Step 1.11.5."""
@@ -1029,7 +1036,9 @@ class LabelingState(rx.State):
             idx = int(index_str)
             if 0 <= idx < len(self.project_classes):
                 self.current_class_id = idx
-                print(f"[Python] Class selected via keyboard: {idx} ({self.project_classes[idx]})")
+                class_name = self.project_classes[idx]
+                print(f"[Python] Class selected via keyboard: {idx} ({class_name})")
+                return rx.call_script(f"window.setCurrentClass && window.setCurrentClass({idx}, '{class_name}')")
         except ValueError:
             pass
 
@@ -1068,10 +1077,12 @@ class LabelingState(rx.State):
         if key == "Enter":
             self.confirm_delete_class()
 
-    def handle_autolabel_keydown(self, key: str):
+    async def handle_autolabel_keydown(self, key: str):
         """Handle Enter key in autolabel prompt."""
         if key == "Enter" and self.autolabel_prompt.strip() and not self.is_autolabeling:
-            self.start_autolabel()
+            # Save prompt before starting
+            await self.save_autolabel_prompt_pref()
+            return type(self).start_autolabel
 
     def confirm_delete_class(self):
         """Delete class and all annotations that use it."""
@@ -1384,11 +1395,10 @@ class LabelingState(rx.State):
     def get_class_color(idx: int) -> str:
         """Generate consistent color for a class using HSL rotation (golden angle).
 
-        SAFARI Naturalist palette: warm, earthy tones (lower saturation).
-        Must stay in sync with canvas.js getClassColor().
+        Must stay in sync with canvas.js getClassColor() and class list color dots.
         """
-        hue = (idx * 137 + 30) % 360  # +30° offset for warmer starting point
-        return f"hsl({hue}, 45%, 42%)"
+        hue = (idx * 137) % 360
+        return f"hsl({hue}, 70%, 50%)"
 
 
     # View state (zoom & pan)
@@ -1689,6 +1699,11 @@ class LabelingState(rx.State):
                     # Pre-fetch images only (labels already in cache from batch load)
                     next_urls = [img.full_url for img in next_images]
                     yield rx.call_script(f"window.prefetchImages && window.prefetchImages({next_urls})")
+
+            # Scroll sidebar to show active thumbnail
+            yield rx.call_script(
+                f"document.getElementById('img-thumb-{image_id}')?.scrollIntoView({{block:'nearest',behavior:'smooth'}})"
+            )
 
             
         except Exception as e:
@@ -2264,6 +2279,24 @@ class LabelingState(rx.State):
         else:
             self.autolabel_prompt_terms = []
             self.autolabel_class_mappings = []
+
+    async def save_autolabel_prompt_pref(self, _value: str = ""):
+        """Save SAM3 prompt preference on blur."""
+        auth_state = await self.get_state(AuthState)
+        user_id = auth_state.user.get("id") if auth_state.user else None
+        if user_id:
+            update_user_preferences(user_id, "autolabel", {
+                "sam3_prompt": self.autolabel_prompt,
+            })
+
+    async def save_autolabel_confidence_pref(self, value=None):
+        """Save autolabel confidence preference."""
+        auth_state = await self.get_state(AuthState)
+        user_id = auth_state.user.get("id") if auth_state.user else None
+        if user_id:
+            update_user_preferences(user_id, "autolabel", {
+                "confidence": self.autolabel_confidence,
+            })
     
     def set_prompt_class_mapping(self, term_idx: int, class_name: str):
         """Set the class mapping for a specific prompt term."""
@@ -2327,7 +2360,7 @@ class LabelingState(rx.State):
     # AUTOLABEL MODAL CONTROLS
     # =========================================================================
     
-    async def open_autolabel_modal(self):
+    async def open_autolabel_modal(self, _value=None):
         """Open autolabel modal and load available models."""
         self.show_autolabel_modal = True
         self.autolabel_error = ""
@@ -2338,12 +2371,18 @@ class LabelingState(rx.State):
         user_id = auth_state.user.get("id") if auth_state.user else None
         if user_id:
             self.local_machines = get_user_local_machines(user_id)
-            # Restore bbox_padding preference
+            # Restore autolabel preferences
             prefs = get_user_preferences(user_id)
             autolabel_prefs = prefs.get("autolabel", {})
             saved_padding = autolabel_prefs.get("bbox_padding")
             if saved_padding is not None:
                 self.autolabel_bbox_padding = float(saved_padding)
+            saved_prompt = autolabel_prefs.get("sam3_prompt", "")
+            if saved_prompt and not self.autolabel_prompt:
+                self.set_autolabel_prompt(saved_prompt)
+            saved_confidence = autolabel_prefs.get("confidence")
+            if saved_confidence is not None:
+                self.autolabel_confidence = float(saved_confidence)
     
     def set_compute_target(self, value):
         """Set compute target (cloud/local)."""

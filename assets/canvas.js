@@ -86,20 +86,24 @@
     const VERTEX_PROXIMITY_PX = 60;   // Only show handles within this px radius of cursor
     const EDGE_HIT_TOLERANCE = 8;     // Px tolerance for clicking on a polygon edge
 
+    // Crosshair state (draw mode)
+    let crosshairX = -1;              // Current mouse X for crosshair (-1 = hidden)
+    let crosshairY = -1;              // Current mouse Y for crosshair (-1 = hidden)
+    let crosshairVisible = false;     // Whether to render the crosshair
+
     // ==========================================================================
     // HELPER FUNCTIONS
     // ==========================================================================
 
     /**
      * Generate consistent color for a class using HSL rotation (golden angle).
-     * SAFARI Naturalist palette: warm, earthy tones (lower saturation).
-     * Must stay in sync with Python's LabelingState.get_class_color formula.
+     * Must stay in sync with Python class list color dots and get_class_color().
      * @param {number} classId - Class index
      * @returns {string} HSL color string
      */
     function getClassColor(classId) {
-        const hue = (classId * 137 + 30) % 360;  // +30° offset for warmer starting point
-        return `hsl(${hue}, 45%, 42%)`;
+        const hue = (classId * 137) % 360;
+        return `hsl(${hue}, 70%, 50%)`;
     }
 
     // ==========================================================================
@@ -573,6 +577,28 @@
                 Math.abs(drawCurrentY - drawStartY)
             );
             ctx.setLineDash([]);
+        }
+
+        // Draw full-canvas crosshair in draw mode (uses active class color)
+        if (crosshairVisible && currentTool === 'draw' && crosshairX >= 0 && crosshairY >= 0) {
+            ctx.save();
+            const classColor = getClassColor(currentClassId);
+            // Convert HSL to HSLA for semi-transparency
+            ctx.strokeStyle = classColor.replace('hsl(', 'hsla(').replace(')', ', 0.85)');
+            ctx.lineWidth = 1.5;
+            ctx.setLineDash([6, 4]);
+            // Vertical line
+            ctx.beginPath();
+            ctx.moveTo(crosshairX, 0);
+            ctx.lineTo(crosshairX, canvas.height);
+            ctx.stroke();
+            // Horizontal line
+            ctx.beginPath();
+            ctx.moveTo(0, crosshairY);
+            ctx.lineTo(canvas.width, crosshairY);
+            ctx.stroke();
+            ctx.setLineDash([]);
+            ctx.restore();
         }
 
         // Draw loading overlay if active
@@ -1241,6 +1267,8 @@
         if (isDrawing) {
             drawCurrentX = mouseX;
             drawCurrentY = mouseY;
+            crosshairX = mouseX;
+            crosshairY = mouseY;
             drawCanvas(); // Redraw for preview
             return;
         }
@@ -1372,9 +1400,15 @@
         // Update cursor based on tool, shift key, and handle hover
         if (e.shiftKey) {
             canvas.style.cursor = 'grab';
+            crosshairVisible = false;
         } else if (currentTool === 'draw') {
-            canvas.style.cursor = 'crosshair';
+            canvas.style.cursor = 'none'; // Hide native cursor, we render our own crosshair
+            crosshairX = mouseX;
+            crosshairY = mouseY;
+            crosshairVisible = true;
+            drawCanvas(); // Redraw to update crosshair position
         } else if (currentTool === 'select') {
+            crosshairVisible = false;
             // Check if hovering over a handle
             const handleIdx = hitTestHandles(mouseX, mouseY);
             if (handleIdx !== -1) {
@@ -1386,6 +1420,7 @@
             }
         } else {
             canvas.style.cursor = 'default';
+            crosshairVisible = false;
         }
     }
 
@@ -1416,6 +1451,12 @@
     }
 
     function handleMouseUp(e) {
+        // Hide crosshair on mouse leave (this handler is also bound to mouseleave)
+        if (e.type === 'mouseleave' && crosshairVisible) {
+            crosshairVisible = false;
+            drawCanvas();
+        }
+
         if (isPanning) {
             isPanning = false;
             canvas.style.cursor = e.shiftKey ? 'grab' : 'default';
@@ -1565,11 +1606,13 @@
         currentTool = tool;
         if (canvas) {
             if (tool === 'draw') {
-                canvas.style.cursor = 'crosshair';
-            } else if (tool === 'mask_edit') {
-                canvas.style.cursor = 'default';
+                canvas.style.cursor = 'none'; // Custom crosshair rendered on canvas
             } else {
                 canvas.style.cursor = 'default';
+                if (crosshairVisible) {
+                    crosshairVisible = false;
+                    drawCanvas(); // Clear rendered crosshair from canvas
+                }
             }
         }
     };
@@ -1579,6 +1622,10 @@
         currentClassId = classId;
         currentClassName = className || "Unknown";
         console.log('[Canvas] Current class set to:', currentClassId, currentClassName);
+        // Redraw to update crosshair color if visible
+        if (crosshairVisible) {
+            drawCanvas();
+        }
     };
 
     // ==========================================================================
@@ -1879,6 +1926,13 @@
             return;
         }
 
+        // Auto-Label shortcut (L key)
+        if (key === 'l') {
+            e.preventDefault();
+            triggerAutolabel();
+            return;
+        }
+
         // Focus Mode toggle (M key)
         if (key === 'm') {
             e.preventDefault();
@@ -1903,6 +1957,18 @@
             input.dispatchEvent(new Event('input', { bubbles: true }));
             input.dispatchEvent(new Event('change', { bubbles: true }));
             console.log('[Canvas] Triggered focus mode toggle');
+        }
+    }
+
+    // Auto-label trigger function
+    function triggerAutolabel() {
+        const input = document.getElementById('autolabel-trigger');
+        if (input) {
+            const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
+            nativeInputValueSetter.call(input, Date.now().toString());
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+            input.dispatchEvent(new Event('change', { bubbles: true }));
+            console.log('[Canvas] Triggered autolabel modal');
         }
     }
 

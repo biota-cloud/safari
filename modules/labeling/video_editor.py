@@ -147,6 +147,7 @@ def video_thumbnail_item(video: VideoModel, idx: int) -> rx.Component:
             }
         },
         transition=styles.TRANSITION_FAST,
+        id=f"vid-thumb-{video.id}",
 )
 
 
@@ -1062,6 +1063,13 @@ def _hidden_inputs() -> rx.Component:
             type="text",
             style=hidden_style,
         ),
+        # Hidden input for autolabel shortcut (L key)
+        rx.input(
+            id="autolabel-trigger",
+            on_change=VideoLabelingState.open_autolabel_modal,
+            type="text",
+            style=hidden_style,
+        ),
         # Fullscreen toggle (F key)
         rx.input(
             id="fullscreen-trigger",
@@ -1320,6 +1328,7 @@ def autolabel_modal() -> rx.Component:
                         placeholder="e.g., 'elephant, fox, red car'",
                         value=VideoLabelingState.autolabel_prompt,
                         on_change=VideoLabelingState.set_autolabel_prompt,
+                        on_blur=VideoLabelingState.save_autolabel_prompt_pref,
                         on_key_down=VideoLabelingState.handle_autolabel_keydown,
                         disabled=VideoLabelingState.is_autolabeling,
                         size="2",
@@ -1716,7 +1725,7 @@ def right_sidebar() -> rx.Component:
                         color_scheme="green",
                         size="2",
                         cursor="pointer",
-                        title="Auto-Label (A)"
+                        title="Auto-Label (L)"
                     ),
                     spacing="2",
                 ),
@@ -1920,6 +1929,7 @@ def shortcuts_help_modal() -> rx.Component:
                 shortcut_row("V", "Select tool"),
                 shortcut_row("R", "Draw rectangle"),
                 shortcut_row("⬠", "Edit masks (button only)"),
+                shortcut_row("L", "Open Auto-Label"),
                 shortcut_row("Delete", "Delete selected"),
                 shortcut_row("1-9", "Select class"),
                 rx.divider(),
