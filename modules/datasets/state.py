@@ -315,6 +315,13 @@ class DatasetsState(rx.State):
     # =========================================================================
     
     annotation_stats: dict = {}
+    # Camera / EXIF stats (typed for Reflex foreach)
+    exif_cameras: list[dict[str, str]] = []
+    exif_date_min: str = ""
+    exif_date_max: str = ""
+    exif_day_count: int = 0
+    exif_night_count: int = 0
+    exif_total: int = 0
     is_loading_stats: bool = False
     
     @rx.var
@@ -403,6 +410,22 @@ class DatasetsState(rx.State):
             self.annotation_stats = {}
         finally:
             self.is_loading_stats = False
+        
+        # Load camera/EXIF stats (secondary)
+        try:
+            from backend.supabase_client import get_project_camera_stats
+            stats = get_project_camera_stats(self.current_project_id)
+            self.exif_cameras = [
+                {"model": c["model"], "count": str(c["count"])}
+                for c in stats.get("cameras", [])
+            ]
+            self.exif_date_min = (stats.get("date_min") or "")[:10]
+            self.exif_date_max = (stats.get("date_max") or "")[:10]
+            self.exif_day_count = stats.get("day_count", 0)
+            self.exif_night_count = stats.get("night_count", 0)
+            self.exif_total = stats.get("total_with_exif", 0)
+        except Exception as e:
+            print(f"[DEBUG] Error loading camera stats: {e}")
 
     def refresh_project_classes(self, classes: list[str]):
         """Update project classes and reload stats for chart refresh."""

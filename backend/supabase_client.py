@@ -815,7 +815,11 @@ def create_image(
     filename: str,
     r2_path: str,
     width: int = None,
-    height: int = None
+    height: int = None,
+    captured_at: str = None,
+    camera_make: str = None,
+    camera_model: str = None,
+    is_night_shot: bool = None,
 ) -> dict | None:
     """Create a new image record for a dataset."""
     supabase = get_supabase()
@@ -828,6 +832,14 @@ def create_image(
         data["width"] = width
     if height is not None:
         data["height"] = height
+    if captured_at is not None:
+        data["captured_at"] = captured_at
+    if camera_make is not None:
+        data["camera_make"] = camera_make
+    if camera_model is not None:
+        data["camera_model"] = camera_model
+    if is_night_shot is not None:
+        data["is_night_shot"] = is_night_shot
     
     result = supabase.table("images").insert(data).execute()
     return result.data[0] if result.data else None
@@ -877,6 +889,160 @@ def get_dataset_image_count(dataset_id: str, labeled_only: bool = False) -> int:
     return result.count or 0
 
 
+def get_dataset_camera_stats(dataset_id: str) -> dict:
+    """Get camera stats for a dataset from EXIF metadata.
+    
+    Returns:
+        {
+            "cameras": [{"model": "Bushnell 87C", "count": 54}, ...],
+            "date_min": "2024-12-07T05:42:17" or None,
+            "date_max": "2025-01-15T22:30:00" or None,
+            "day_count": 62,
+            "night_count": 17,
+            "total_with_exif": 79,
+        }
+    """
+    supabase = get_supabase()
+    result = (
+        supabase.table("images")
+        .select("camera_make, camera_model, captured_at, is_night_shot")
+        .eq("dataset_id", dataset_id)
+        .execute()
+    )
+    images = result.data or []
+    
+    # Aggregate
+    camera_counts: dict[str, int] = {}
+    dates = []
+    day_count = 0
+    night_count = 0
+    total_with_exif = 0
+    
+    for img in images:
+        model = img.get("camera_model")
+        make = img.get("camera_make")
+        captured = img.get("captured_at")
+        is_night = img.get("is_night_shot")
+        
+        if model or make or captured:
+            total_with_exif += 1
+        
+        # Camera grouping: prefer "Make Model", fallback to Model or Make
+        camera_label = None
+        if make and model:
+            # Avoid "BUSHNELL BUSHNELL 87C" — check if make is already in model
+            if make.upper() in model.upper():
+                camera_label = model
+            else:
+                camera_label = f"{make} {model}"
+        elif model:
+            camera_label = model
+        elif make:
+            camera_label = make
+        
+        if camera_label:
+            camera_counts[camera_label] = camera_counts.get(camera_label, 0) + 1
+        
+        if captured:
+            dates.append(captured)
+        
+        if is_night is True:
+            night_count += 1
+        elif is_night is False:
+            day_count += 1
+    
+    # Sort cameras by count descending
+    cameras = sorted(
+        [{"model": m, "count": c} for m, c in camera_counts.items()],
+        key=lambda x: x["count"],
+        reverse=True,
+    )
+    
+    return {
+        "cameras": cameras,
+        "date_min": min(dates) if dates else None,
+        "date_max": max(dates) if dates else None,
+        "day_count": day_count,
+        "night_count": night_count,
+        "total_with_exif": total_with_exif,
+    }
+
+
+def get_project_camera_stats(project_id: str) -> dict:
+    """Get aggregated camera stats across all image datasets in a project."""
+    datasets = get_project_datasets(project_id)
+    image_dataset_ids = [d["id"] for d in datasets if d.get("type") != "video"]
+    
+    if not image_dataset_ids:
+        return {"cameras": [], "date_min": None, "date_max": None, "day_count": 0, "night_count": 0, "total_with_exif": 0}
+    
+    supabase = get_supabase()
+    
+    # Batch query across all datasets
+    all_images = []
+    for ds_id in image_dataset_ids:
+        result = (
+            supabase.table("images")
+            .select("camera_make, camera_model, captured_at, is_night_shot")
+            .eq("dataset_id", ds_id)
+            .execute()
+        )
+        all_images.extend(result.data or [])
+    
+    # Same aggregation as dataset-level
+    camera_counts: dict[str, int] = {}
+    dates = []
+    day_count = 0
+    night_count = 0
+    total_with_exif = 0
+    
+    for img in all_images:
+        model = img.get("camera_model")
+        make = img.get("camera_make")
+        captured = img.get("captured_at")
+        is_night = img.get("is_night_shot")
+        
+        if model or make or captured:
+            total_with_exif += 1
+        
+        camera_label = None
+        if make and model:
+            if make.upper() in model.upper():
+                camera_label = model
+            else:
+                camera_label = f"{make} {model}"
+        elif model:
+            camera_label = model
+        elif make:
+            camera_label = make
+        
+        if camera_label:
+            camera_counts[camera_label] = camera_counts.get(camera_label, 0) + 1
+        
+        if captured:
+            dates.append(captured)
+        
+        if is_night is True:
+            night_count += 1
+        elif is_night is False:
+            day_count += 1
+    
+    cameras = sorted(
+        [{"model": m, "count": c} for m, c in camera_counts.items()],
+        key=lambda x: x["count"],
+        reverse=True,
+    )
+    
+    return {
+        "cameras": cameras,
+        "date_min": min(dates) if dates else None,
+        "date_max": max(dates) if dates else None,
+        "day_count": day_count,
+        "night_count": night_count,
+        "total_with_exif": total_with_exif,
+    }
+
+
 def bulk_create_images(dataset_id: str, images: list[dict]) -> list[dict]:
     """
     Bulk create image records for a dataset.
@@ -909,6 +1075,10 @@ def bulk_create_images(dataset_id: str, images: list[dict]) -> list[dict]:
             record["annotations"] = img["annotations"]
         if "annotation_count" in img:
             record["annotation_count"] = img["annotation_count"]
+        # EXIF metadata
+        for field in ("captured_at", "camera_make", "camera_model", "is_night_shot"):
+            if field in img and img[field] is not None:
+                record[field] = img[field]
         records.append(record)
     
     result = supabase.table("images").insert(records).execute()

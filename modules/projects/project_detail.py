@@ -578,6 +578,99 @@ def class_distribution_panel() -> rx.Component:
     )
 
 
+def project_camera_info_panel() -> rx.Component:
+    """Secondary panel showing camera/EXIF insights at the project level."""
+    return rx.cond(
+        DatasetsState.exif_total > 0,
+        rx.box(
+            rx.vstack(
+                rx.hstack(
+                    rx.icon("camera", size=16, color=styles.TEXT_SECONDARY),
+                    rx.text("Camera Info", size="2", weight="medium", style={"color": styles.TEXT_SECONDARY}),
+                    spacing="2",
+                    align="center",
+                ),
+                # Camera models list
+                rx.cond(
+                    DatasetsState.exif_cameras.length() > 0,
+                    rx.vstack(
+                        rx.foreach(
+                            DatasetsState.exif_cameras,
+                            lambda cam: rx.hstack(
+                                rx.text(
+                                    cam["model"],
+                                    size="2",
+                                    style={"color": styles.TEXT_PRIMARY},
+                                ),
+                                rx.spacer(),
+                                rx.text(
+                                    cam["count"] + " images",
+                                    size="1",
+                                    style={"color": styles.TEXT_SECONDARY},
+                                ),
+                                width="100%",
+                                align="center",
+                                padding_y="2px",
+                            ),
+                        ),
+                        spacing="0",
+                        width="100%",
+                    ),
+                    rx.fragment(),
+                ),
+                # Date range
+                rx.cond(
+                    DatasetsState.exif_date_min.length() > 0,
+                    rx.hstack(
+                        rx.icon("calendar", size=14, color=styles.TEXT_SECONDARY),
+                        rx.text(
+                            DatasetsState.exif_date_min + " — " + DatasetsState.exif_date_max,
+                            size="1",
+                            style={"color": styles.TEXT_SECONDARY},
+                        ),
+                        spacing="2",
+                        align="center",
+                    ),
+                    rx.fragment(),
+                ),
+                # Day/Night split
+                rx.cond(
+                    (DatasetsState.exif_day_count + DatasetsState.exif_night_count) > 0,
+                    rx.hstack(
+                        rx.icon("sun", size=14, color=styles.WARNING),
+                        rx.text(
+                            DatasetsState.exif_day_count.to(str) + " day",
+                            size="1",
+                            style={"color": styles.TEXT_SECONDARY},
+                        ),
+                        rx.text("·", size="1", style={"color": styles.TEXT_SECONDARY}),
+                        rx.icon("moon", size=14, color=styles.TEXT_SECONDARY),
+                        rx.text(
+                            DatasetsState.exif_night_count.to(str) + " night",
+                            size="1",
+                            style={"color": styles.TEXT_SECONDARY},
+                        ),
+                        spacing="2",
+                        align="center",
+                    ),
+                    rx.fragment(),
+                ),
+                spacing="3",
+                width="100%",
+            ),
+            style={
+                "padding": styles.SPACING_3,
+                "background": styles.BG_SECONDARY,
+                "border_radius": styles.RADIUS_LG,
+                "border": f"1px solid {styles.BORDER}",
+                "width": "100%",
+                "opacity": "0.85",
+            },
+        ),
+        rx.fragment(),
+    )
+
+
 def dataset_card(dataset: DatasetModel) -> rx.Component:
     """Single dataset card with thumbnail and type icon."""
     type_icon = rx.cond(
@@ -1441,6 +1534,7 @@ def project_detail_content() -> rx.Component:
                 rx.vstack(
                     class_distribution_panel(),
                     classes_panel(),
+                    project_camera_info_panel(),
                     spacing="4",
                     width="100%",
                 ),

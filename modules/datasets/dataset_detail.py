@@ -375,6 +375,99 @@ def labels_panel() -> rx.Component:
     )
 
 
+def camera_info_panel() -> rx.Component:
+    """Secondary panel showing camera/EXIF insights (below class distribution)."""
+    return rx.cond(
+        DatasetDetailState.exif_total > 0,
+        rx.box(
+            rx.vstack(
+                rx.hstack(
+                    rx.icon("camera", size=16, color=styles.TEXT_SECONDARY),
+                    rx.text("Camera Info", size="2", weight="medium", style={"color": styles.TEXT_SECONDARY}),
+                    spacing="2",
+                    align="center",
+                ),
+                # Camera models list
+                rx.cond(
+                    DatasetDetailState.exif_cameras.length() > 0,
+                    rx.vstack(
+                        rx.foreach(
+                            DatasetDetailState.exif_cameras,
+                            lambda cam: rx.hstack(
+                                rx.text(
+                                    cam["model"],
+                                    size="2",
+                                    style={"color": styles.TEXT_PRIMARY},
+                                ),
+                                rx.spacer(),
+                                rx.text(
+                                    cam["count"] + " images",
+                                    size="1",
+                                    style={"color": styles.TEXT_SECONDARY},
+                                ),
+                                width="100%",
+                                align="center",
+                                padding_y="2px",
+                            ),
+                        ),
+                        spacing="0",
+                        width="100%",
+                    ),
+                    rx.fragment(),
+                ),
+                # Date range
+                rx.cond(
+                    DatasetDetailState.exif_date_min.length() > 0,
+                    rx.hstack(
+                        rx.icon("calendar", size=14, color=styles.TEXT_SECONDARY),
+                        rx.text(
+                            DatasetDetailState.exif_date_min + " — " + DatasetDetailState.exif_date_max,
+                            size="1",
+                            style={"color": styles.TEXT_SECONDARY},
+                        ),
+                        spacing="2",
+                        align="center",
+                    ),
+                    rx.fragment(),
+                ),
+                # Day/Night split
+                rx.cond(
+                    (DatasetDetailState.exif_day_count + DatasetDetailState.exif_night_count) > 0,
+                    rx.hstack(
+                        rx.icon("sun", size=14, color=styles.WARNING),
+                        rx.text(
+                            DatasetDetailState.exif_day_count.to(str) + " day",
+                            size="1",
+                            style={"color": styles.TEXT_SECONDARY},
+                        ),
+                        rx.text("·", size="1", style={"color": styles.TEXT_SECONDARY}),
+                        rx.icon("moon", size=14, color=styles.TEXT_SECONDARY),
+                        rx.text(
+                            DatasetDetailState.exif_night_count.to(str) + " night",
+                            size="1",
+                            style={"color": styles.TEXT_SECONDARY},
+                        ),
+                        spacing="2",
+                        align="center",
+                    ),
+                    rx.fragment(),
+                ),
+                spacing="3",
+                width="100%",
+            ),
+            style={
+                "padding": styles.SPACING_3,
+                "background": styles.BG_SECONDARY,
+                "border_radius": styles.RADIUS_LG,
+                "border": f"1px solid {styles.BORDER}",
+                "width": "100%",
+                "opacity": "0.85",
+            },
+        ),
+        rx.fragment(),
+    )
+
+
 def batch_actions_bar() -> rx.Component:
     """Unified toolbar row for selection controls and bulk actions."""
     return rx.hstack(
@@ -457,11 +550,12 @@ def batch_actions_bar() -> rx.Component:
 
 
 def right_sidebar() -> rx.Component:
-    """Right sidebar with stats, class distribution, classes, and labels panels."""
+    """Right sidebar with stats, class distribution, classes, labels, and camera info panels."""
     return rx.vstack(
         stats_overview_panel(),
         class_distribution_panel(),
         labels_panel(),
+        camera_info_panel(),
         spacing="3",
         width="100%",
         style={

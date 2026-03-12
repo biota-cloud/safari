@@ -139,6 +139,14 @@ class DatasetDetailState(rx.State):
     # Class distribution from dataset
     class_counts: dict[str, int] = {}
     
+    # Camera / EXIF stats (secondary insights, typed for Reflex foreach)
+    exif_cameras: list[dict[str, str]] = []
+    exif_date_min: str = ""
+    exif_date_max: str = ""
+    exif_day_count: int = 0
+    exif_night_count: int = 0
+    exif_total: int = 0
+    
     # Labels breakdown by video (for video datasets)
     video_labels_breakdown: list[VideoLabelsBreakdown] = []
     
@@ -252,6 +260,27 @@ class DatasetDetailState(rx.State):
                     print(f"[DEBUG] Computed class counts from annotations: {fresh_counts}")
             except Exception as e:
                 print(f"[DEBUG] Error computing class counts from annotations: {e}")
+        
+        # Load camera / EXIF stats (secondary, after page renders)
+        if self.current_dataset_id and self.dataset_type != "video":
+            try:
+                from backend.supabase_client import get_dataset_camera_stats
+                stats = get_dataset_camera_stats(self.current_dataset_id)
+                self.exif_cameras = [
+                    {"model": c["model"], "count": str(c["count"])}
+                    for c in stats.get("cameras", [])
+                ]
+                self.exif_date_min = (stats.get("date_min") or "")[:10]
+                self.exif_date_max = (stats.get("date_max") or "")[:10]
+                self.exif_day_count = stats.get("day_count", 0)
+                self.exif_night_count = stats.get("night_count", 0)
+                self.exif_total = stats.get("total_with_exif", 0)
+                print(f"[DEBUG] Camera stats loaded: {self.exif_total} images with EXIF, {len(self.exif_cameras)} cameras")
+                yield
+            except Exception as e:
+                print(f"[DEBUG] Error loading camera stats: {e}")
+                import traceback
+                traceback.print_exc()
     
     
     async def _load_images(self):
@@ -371,6 +400,12 @@ class DatasetDetailState(rx.State):
                     file_content = await file.read()
                     print(f"[UPLOAD DEBUG] Read {len(file_content)} bytes")
                     
+                    # Extract EXIF metadata before any processing
+                    from backend.exif_utils import extract_exif_metadata
+                    exif_meta = extract_exif_metadata(file_content)
+                    if exif_meta:
+                        print(f"[UPLOAD DEBUG] EXIF: {exif_meta}")
+                    
                     # 1. Process Image and Generate Thumbnail
                     img = PILImage.open(io.BytesIO(file_content))
                     width, height = img.size
@@ -403,7 +438,7 @@ class DatasetDetailState(rx.State):
                     r2.upload_file(thumb_bytes, thumbnail_key, content_type=content_type)
                     print("[UPLOAD DEBUG] Thumbnail uploaded successfully")
                     
-                    # 4. Save to database
+                    # 4. Save to database (with EXIF metadata)
                     print("[UPLOAD DEBUG] Saving to database...")
                     create_image(
                         dataset_id=self.current_dataset_id,
@@ -411,6 +446,10 @@ class DatasetDetailState(rx.State):
                         r2_path=original_key,
                         width=width,
                         height=height,
+                        captured_at=exif_meta.get("captured_at").isoformat() if exif_meta.get("captured_at") else None,
+                        camera_make=exif_meta.get("camera_make"),
+                        camera_model=exif_meta.get("camera_model"),
+                        is_night_shot=exif_meta.get("is_night_shot"),
                     )
                     print("[UPLOAD DEBUG] Database record created")
                     
