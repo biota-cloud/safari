@@ -293,8 +293,14 @@ def api_model_row(model: APIModelModel) -> rx.Component:
         # Backbone badge
         rx.table.cell(
             rx.badge(
-                rx.cond(model.backbone == "convnext", "CNX", "YOLO"),
-                color_scheme=rx.cond(model.backbone == "convnext", "teal", "brown"),
+                rx.cond(
+                    model.backbone == "convnextv2", "CN2",
+                    rx.cond(model.backbone == "convnext", "CNX", "YOLO"),
+                ),
+                color_scheme=rx.cond(
+                    model.backbone == "convnextv2", "teal",
+                    rx.cond(model.backbone == "convnext", "gray", "brown"),
+                ),
                 variant="outline",
                 size="1",
             ),

@@ -219,12 +219,22 @@ def run_classification_loop(
     final_predictions = []
     final_masks = []
     first_crop_bytes = None
+    crop_widths = []
+    crop_heights = []
     
     for idx, (box, sam3_prompt, mask_polygon) in enumerate(sam3_detections):
         try:
             # Crop the detection
             x1, y1, x2, y2 = box
             crop_bytes = crop_from_box(image_bytes, (x1, y1, x2, y2), padding=0.05)
+            
+            # Track crop resolution for distribution summary
+            from PIL import Image
+            import io as _io
+            _crop_img = Image.open(_io.BytesIO(crop_bytes))
+            crop_widths.append(_crop_img.width)
+            crop_heights.append(_crop_img.height)
+            print(f"  [{idx}] Crop resolution: {_crop_img.width}x{_crop_img.height} (box: {int(x2-x1)}x{int(y2-y1)} from {img_width}x{img_height})")
             
             # Capture first crop for debugging
             if first_crop_bytes is None:
@@ -300,6 +310,24 @@ def run_classification_loop(
                 
         except Exception as e:
             print(f"  [{idx}] Error classifying crop: {e}")
+    
+    # === Crop Resolution Distribution Summary ===
+    if crop_widths:
+        import statistics
+        min_sides = sorted([min(w, h) for w, h in zip(crop_widths, crop_heights)])
+        print(f"\n  === Crop Resolution Distribution ({len(crop_widths)} crops) ===")
+        print(f"  Width  — min: {min(crop_widths)}, max: {max(crop_widths)}, "
+              f"mean: {int(statistics.mean(crop_widths))}, median: {int(statistics.median(crop_widths))}")
+        print(f"  Height — min: {min(crop_heights)}, max: {max(crop_heights)}, "
+              f"mean: {int(statistics.mean(crop_heights))}, median: {int(statistics.median(crop_heights))}")
+        p25 = min_sides[len(min_sides) // 4]
+        p75 = min_sides[3 * len(min_sides) // 4]
+        print(f"  Min side — p25: {p25}, median: {int(statistics.median(min_sides))}, p75: {p75}")
+        print(f"  → Recommended ConvNeXt imgsz: {int(statistics.median(min_sides))} "
+              f"(median of shortest side)")
+        print(f"    Crops below 224px: {sum(1 for s in min_sides if s < 224)}/{len(min_sides)}")
+        print(f"    Crops below 384px: {sum(1 for s in min_sides if s < 384)}/{len(min_sides)}")
+        print(f"    Crops below 448px: {sum(1 for s in min_sides if s < 448)}/{len(min_sides)}")
     
     return final_predictions, final_masks, first_crop_bytes
 

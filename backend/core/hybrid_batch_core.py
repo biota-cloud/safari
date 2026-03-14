@@ -37,6 +37,7 @@ def run_hybrid_batch_inference(
     sam3_model_path: Optional[str] = None,
     download_classifier_fn: Callable[[str, Path], bool] = None,
     sam3_imgsz: int = 644,
+    image_filenames: list[str] | None = None,  # Original filenames for debug logging
 ) -> list[dict]:
     """
     Run hybrid SAM3 + Classifier inference on multiple images sequentially.
@@ -130,10 +131,27 @@ def run_hybrid_batch_inference(
         
         results_list = []
         batch_first_crop = None  # Capture first crop from entire batch for debugging
+        batch_crop_widths = []   # Accumulated across all images for distribution summary
+        batch_crop_heights = []
         
         # === Process each image ===
         for idx, image_url in enumerate(image_urls):
-            print(f"\n[{idx+1}/{len(image_urls)}] Processing image...")
+            # Use provided filename or fall back to URL extraction
+            if image_filenames and idx < len(image_filenames):
+                orig_filename = image_filenames[idx]
+            else:
+                from urllib.parse import urlparse, unquote
+                url_path = urlparse(image_url).path
+                orig_filename = unquote(url_path.split('/')[-1]) if url_path else f"input_{idx}"
+            
+            # Clear GPU cache between images to prevent memory fragmentation
+            if idx > 0:
+                torch.cuda.empty_cache()
+            
+            # GPU memory diagnostic
+            gpu_alloc = torch.cuda.memory_allocated() / 1024**2
+            gpu_reserved = torch.cuda.memory_reserved() / 1024**2
+            print(f"\n[{idx+1}/{len(image_urls)}] Processing: {orig_filename}  [GPU: {gpu_alloc:.0f}MB alloc, {gpu_reserved:.0f}MB reserved]")
             
             try:
                 # Download image
@@ -143,10 +161,18 @@ def run_hybrid_batch_inference(
                 img_array = np.frombuffer(image_bytes, np.uint8)
                 img = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
                 img_height, img_width = img.shape[:2]
+                print(f"[{idx+1}] {orig_filename}: {img_width}x{img_height} ({len(image_bytes)} bytes)")
                 
                 # Save for SAM3
                 image_path = work_dir / f"input_{idx}.jpg"
                 image_path.write_bytes(image_bytes)
+                
+                # Diagnostic: confirm image on disk and expected SAM3 preprocessing
+                aspect_ratio = img_width / img_height
+                expected_long = sam3_imgsz
+                expected_short = int(sam3_imgsz / aspect_ratio) if aspect_ratio > 1 else int(sam3_imgsz * aspect_ratio)
+                print(f"[{idx+1}] SAM3 input: {img_width}x{img_height} (AR={aspect_ratio:.2f}), imgsz={sam3_imgsz}")
+                print(f"[{idx+1}] Expected letterbox: {expected_long}x{expected_short} padded to {sam3_imgsz}x{sam3_imgsz}")
                 
                 # Run SAM3 detection (reusing predictor)
                 predictor.set_image(str(image_path))
@@ -158,6 +184,10 @@ def run_hybrid_batch_inference(
                         res = results[0]
                         if hasattr(res, 'boxes') and res.boxes is not None:
                             boxes = res.boxes.xyxy.cpu().numpy()
+                            # Log SAM3 confidence scores
+                            confs = res.boxes.conf.cpu().numpy() if hasattr(res.boxes, 'conf') and res.boxes.conf is not None else []
+                            for ci, c in enumerate(confs):
+                                print(f"    [SAM3 det {ci}] conf={c:.4f} box={boxes[ci][:4].tolist()}")
                             
                             # Extract masks if available
                             masks_data = None
@@ -175,6 +205,10 @@ def run_hybrid_batch_inference(
                                     mask_polygon = mask_to_polygon(masks_data[box_idx], img_width, img_height)
                                 
                                 sam3_detections.append((box[:4], prompt, mask_polygon))
+                        else:
+                            print(f"    [SAM3] prompt='{prompt}': no boxes returned")
+                    else:
+                        print(f"    [SAM3] prompt='{prompt}': no results")
                 
                 print(f"[{idx+1}/{len(image_urls)}] SAM3 found {len(sam3_detections)} detections")
                 
@@ -200,6 +234,14 @@ def run_hybrid_batch_inference(
                     try:
                         x1, y1, x2, y2 = box
                         crop_bytes = crop_from_box(image_bytes, (x1, y1, x2, y2), padding=0.05)
+                        
+                        # Track crop resolution
+                        from PIL import Image
+                        import io as _io
+                        _crop_img = Image.open(_io.BytesIO(crop_bytes))
+                        batch_crop_widths.append(_crop_img.width)
+                        batch_crop_heights.append(_crop_img.height)
+                        print(f"    [Crop {det_idx}] Resolution: {_crop_img.width}x{_crop_img.height} (box: {int(x2-x1)}x{int(y2-y1)} from {img_width}x{img_height})")
                         
                         # Capture first crop for debugging
                         if image_first_crop is None:
@@ -310,6 +352,25 @@ def run_hybrid_batch_inference(
                 })
         
         print(f"\n=== Batch complete: {len(results_list)} images processed ===")
+        
+        # === Crop Resolution Distribution Summary (across all images) ===
+        if batch_crop_widths:
+            import statistics
+            min_sides = sorted([min(w, h) for w, h in zip(batch_crop_widths, batch_crop_heights)])
+            print(f"\n  === Crop Resolution Distribution ({len(batch_crop_widths)} crops across {len(results_list)} images) ===")
+            print(f"  Width  \u2014 min: {min(batch_crop_widths)}, max: {max(batch_crop_widths)}, "
+                  f"mean: {int(statistics.mean(batch_crop_widths))}, median: {int(statistics.median(batch_crop_widths))}")
+            print(f"  Height \u2014 min: {min(batch_crop_heights)}, max: {max(batch_crop_heights)}, "
+                  f"mean: {int(statistics.mean(batch_crop_heights))}, median: {int(statistics.median(batch_crop_heights))}")
+            p25 = min_sides[len(min_sides) // 4]
+            p75 = min_sides[3 * len(min_sides) // 4]
+            print(f"  Min side \u2014 p25: {p25}, median: {int(statistics.median(min_sides))}, p75: {p75}")
+            print(f"  \u2192 Recommended ConvNeXt imgsz: {int(statistics.median(min_sides))} "
+                  f"(median of shortest side)")
+            print(f"    Crops below 224px: {sum(1 for s in min_sides if s < 224)}/{len(min_sides)}")
+            print(f"    Crops below 384px: {sum(1 for s in min_sides if s < 384)}/{len(min_sides)}")
+            print(f"    Crops below 448px: {sum(1 for s in min_sides if s < 448)}/{len(min_sides)}")
+        
         return results_list
         
     except Exception as e:

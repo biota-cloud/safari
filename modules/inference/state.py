@@ -873,7 +873,7 @@ class InferenceState(rx.State):
                                                         if prefix:
                                                             # Use .pth for ConvNeXt, .pt for YOLO
                                                             run_config = run_result.data.get("config", {}) or {}
-                                                            ext = ".pth" if run_config.get("classifier_backbone") == "convnext" else ".pt"
+                                                            ext = ".pth" if run_config.get("classifier_backbone") in ("convnext", "convnextv2") else ".pt"
                                                             self.classifier_r2_path = f"{prefix}/best{ext}"
                                                         print(f"[Preferences] Classifier detected from preferences: {self.classifier_classes}")
                                             except Exception as e:
@@ -1481,7 +1481,7 @@ class InferenceState(rx.State):
                                     if prefix:
                                         # Use .pth for ConvNeXt, .pt for YOLO
                                         run_config = run_result.data.get("config", {}) or {}
-                                        ext = ".pth" if run_config.get("classifier_backbone") == "convnext" else ".pt"
+                                        ext = ".pth" if run_config.get("classifier_backbone") in ("convnext", "convnextv2") else ".pt"
                                         self.classifier_r2_path = f"{prefix}/best{ext}"
                                     print(f"[Hybrid] Classifier detected: {self.classifier_classes}")
                         except Exception as e:

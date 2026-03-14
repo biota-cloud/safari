@@ -121,7 +121,12 @@ def new_eval_modal() -> rx.Component:
                                 rx.text("SAM3 imgsz", size="2", style={"color": styles.TEXT_SECONDARY}),
                                 rx.el.select(
                                     rx.el.option("644", value="644"),
+                                    rx.el.option("1036", value="1036"),
+                                    rx.el.option("1288", value="1288"),
                                     rx.el.option("1918", value="1918"),
+                                    rx.el.option("2688", value="2688"),
+                                    rx.el.option("3584", value="3584"),
+                                    rx.el.option("4480", value="4480"),
                                     value=EvaluationState.eval_sam3_imgsz,
                                     on_change=EvaluationState.set_eval_sam3_imgsz,
                                     style={"padding": "6px 8px", "border_radius": styles.RADIUS_SM, "border": f"1px solid {styles.BORDER}", "background": styles.BG_TERTIARY, "color": styles.TEXT_PRIMARY},

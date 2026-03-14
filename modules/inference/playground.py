@@ -377,22 +377,31 @@ def model_dropdown() -> rx.Component:
                                                 ),
                                                 # Backbone badge (only for classification)
                                                 rx.cond(
-                                                    m["backbone"] == "convnext",
-                                                    rx.box("CNX", style=styles.BADGE_MINI | {
-                                                        "background": styles.BG_TERTIARY,
-                                                        "color": styles.TEXT_PRIMARY,
-                                                        "border": f"1px solid {styles.BORDER}",
+                                                    m["backbone"] == "convnextv2",
+                                                    rx.box("CN2", style=styles.BADGE_MINI | {
+                                                        "background": "rgba(20, 184, 166, 0.15)",
+                                                        "color": "#14b8a6",
+                                                        "border": "1px solid rgba(20, 184, 166, 0.3)",
                                                         "font_weight": "500",
                                                     }),
                                                     rx.cond(
-                                                        m["backbone"] == "yolo",
-                                                        rx.box("YOLO", style=styles.BADGE_MINI | {
+                                                        m["backbone"] == "convnext",
+                                                        rx.box("CNX", style=styles.BADGE_MINI | {
                                                             "background": styles.BG_TERTIARY,
                                                             "color": styles.TEXT_PRIMARY,
                                                             "border": f"1px solid {styles.BORDER}",
                                                             "font_weight": "500",
                                                         }),
-                                                        rx.fragment(),  # No backbone for detection models
+                                                        rx.cond(
+                                                            m["backbone"] == "yolo",
+                                                            rx.box("YOLO", style=styles.BADGE_MINI | {
+                                                                "background": styles.BG_TERTIARY,
+                                                                "color": styles.TEXT_PRIMARY,
+                                                                "border": f"1px solid {styles.BORDER}",
+                                                                "font_weight": "500",
+                                                            }),
+                                                            rx.fragment(),  # No backbone for detection models
+                                                        ),
                                                     ),
                                                 ),
                                                 # Metric badge (mAP or Acc)
@@ -916,7 +925,7 @@ def inference_card() -> rx.Component:
                             rx.hstack(
                                 rx.text("Video Resize", size="1", style={"color": styles.TEXT_SECONDARY, "white_space": "nowrap"}),
                                 rx.select(
-                                    ["490", "644", "1036", "1288", "1918"],
+                                    ["490", "644", "1036", "1288", "1918", "2688", "3584", "4480"],
                                     value=InferenceState.video_target_resolution,
                                     on_change=InferenceState.set_video_target_resolution,
                                     size="1",
@@ -932,7 +941,7 @@ def inference_card() -> rx.Component:
                             rx.hstack(
                                 rx.text("SAM3 imgsz", size="1", style={"color": styles.TEXT_SECONDARY, "white_space": "nowrap"}),
                                 rx.select(
-                                    ["490", "644", "1036", "1288", "1918"],
+                                    ["490", "644", "1036", "1288", "1918", "2688", "3584", "4480"],
                                     value=InferenceState.sam3_imgsz,
                                     on_change=InferenceState.set_sam3_imgsz,
                                     size="1",

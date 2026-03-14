@@ -62,7 +62,7 @@ image = (
         "git+https://github.com/ultralytics/CLIP.git"  # Ultralytics CLIP fork for SAM3
     )
     # Add /root to Python path for backend.core imports (must be before add_local_*)
-    .env({"PYTHONPATH": "/root"})
+    .env({"PYTHONPATH": "/root", "PYTORCH_CUDA_ALLOC_CONF": "expandable_segments:True"})
     # Mount backend/core/ modules for shared pipeline logic (must be last)
     .add_local_dir(
         local_path=str(_CORE_DIR),
@@ -127,7 +127,7 @@ def _make_supabase_progress_callback(result_id: str):
 
 @app.function(
     image=image,
-    gpu="L40S",
+    gpu="A100-80GB",
     timeout=300,  # 5 minutes max for single image inference
     enable_memory_snapshot=True,  # Dramatically reduces cold start time
     volumes={
@@ -156,7 +156,14 @@ def hybrid_inference(
     """
     from backend.core.hybrid_infer_core import run_hybrid_inference
     
-    print(f"[Modal] SAM3 model path: {sam3_model_path}")
+    print(f"[Modal] === User Settings (Single Image) ===")
+    print(f"[Modal]   sam3_model_path: {sam3_model_path}")
+    print(f"[Modal]   sam3_imgsz: {sam3_imgsz}")
+    print(f"[Modal]   confidence_threshold (SAM3): {confidence_threshold}")
+    print(f"[Modal]   classifier_confidence: {classifier_confidence}")
+    print(f"[Modal]   sam3_prompts: {sam3_prompts}")
+    print(f"[Modal]   classifier_r2_path: {classifier_r2_path}")
+    print(f"[Modal]   classifier_classes: {classifier_classes}")
     
     return run_hybrid_inference(
         image_url=image_url,
@@ -175,8 +182,8 @@ def hybrid_inference(
 
 @app.function(
     image=image,
-    gpu="L40S",
-    timeout=900,  # 15 minutes for batch processing
+    gpu="A100-80GB",
+    timeout=1800,  # 30 minutes for batch processing at high resolutions
     enable_memory_snapshot=True,
     volumes={
         "/models": sam3_volume,
@@ -195,6 +202,7 @@ def hybrid_inference_batch(
     classifier_confidence: float = 0.5,
     sam3_model_path: str = "/models/sam3.pt",  # Volume path to SAM3 model (supports fine-tuned)
     sam3_imgsz: int = 644,  # SAM3 inference resolution (stride-14 aligned)
+    image_filenames: list[str] | None = None,  # Original filenames for debug logging
 ) -> list[dict]:
     """
     Run hybrid SAM3 + Classifier inference on multiple images sequentially.
@@ -204,7 +212,14 @@ def hybrid_inference_batch(
     """
     from backend.core.hybrid_batch_core import run_hybrid_batch_inference
     
-    print(f"[Modal] SAM3 model path (batch): {sam3_model_path}")
+    print(f"[Modal] === User Settings (Batch) ===")
+    print(f"[Modal]   sam3_model_path: {sam3_model_path}")
+    print(f"[Modal]   sam3_imgsz: {sam3_imgsz}")
+    print(f"[Modal]   confidence_threshold (SAM3): {confidence_threshold}")
+    print(f"[Modal]   classifier_confidence: {classifier_confidence}")
+    print(f"[Modal]   sam3_prompts: {sam3_prompts}")
+    print(f"[Modal]   image_count: {len(image_urls)}")
+    print(f"[Modal]   classifier_r2_path: {classifier_r2_path}")
     
     return run_hybrid_batch_inference(
         image_urls=image_urls,
@@ -217,12 +232,13 @@ def hybrid_inference_batch(
         sam3_model_path=sam3_model_path,
         sam3_imgsz=sam3_imgsz,
         download_classifier_fn=download_classifier_model,
+        image_filenames=image_filenames,
     )
 
 
 @app.function(
     image=image,
-    gpu="L40S",
+    gpu="A100-80GB",
     timeout=1800,  # 30 minutes for video
     enable_memory_snapshot=True,  # Dramatically reduces cold start time
     volumes={
@@ -287,7 +303,15 @@ def hybrid_inference_video(
         progress_callback = _make_supabase_progress_callback(result_id)
     
     try:
-        print(f"[Modal] SAM3 model path (video): {sam3_model_path}")
+        print(f"[Modal] === User Settings (Video) ===")
+        print(f"[Modal]   sam3_model_path: {sam3_model_path}")
+        print(f"[Modal]   sam3_imgsz: {sam3_imgsz}")
+        print(f"[Modal]   confidence_threshold (SAM3): {confidence_threshold}")
+        print(f"[Modal]   classifier_confidence: {classifier_confidence}")
+        print(f"[Modal]   sam3_prompts: {sam3_prompts}")
+        print(f"[Modal]   classify_top_k: {classify_top_k}")
+        print(f"[Modal]   start_time: {start_time}, end_time: {end_time}")
+        print(f"[Modal]   frame_skip: {frame_skip}")
         result = run_hybrid_video_inference(
             video_url=video_url,
             sam3_prompts=sam3_prompts,

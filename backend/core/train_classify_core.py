@@ -368,6 +368,9 @@ def run_convnext_training(
     import timm
     
     model_size = config.get("convnext_model_size", "tiny")
+    # Determine V1 vs V2 from backbone config
+    backbone = config.get("classifier_backbone", "convnext")
+    model_version = "v2" if backbone == "convnextv2" else "v1"
     epochs = config.get("epochs", 100)
     batch_size = config.get("batch_size", 32)
     image_size = config.get("image_size", 224)
@@ -375,27 +378,46 @@ def run_convnext_training(
     lr0 = config.get("convnext_lr0", 0.0001)  # Lower for fine-tuning
     weight_decay = config.get("convnext_weight_decay", 0.05)  # AdamW regularization
     
-    print(f"Starting ConvNeXt-{model_size} classification training...")
+    version_label = "V2" if model_version == "v2" else ""
+    print(f"Starting ConvNeXt{version_label}-{model_size} classification training...")
     print(f"Epochs: {epochs}, Batch: {batch_size}, ImgSize: {image_size}")
     print(f"Advanced settings: patience={patience}, lr0={lr0}, weight_decay={weight_decay}")
     
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
     
+    # CLAHE preprocessing — enhances local contrast, critical for IR/night images
+    class ApplyCLAHE:
+        """Apply CLAHE (Contrast Limited Adaptive Histogram Equalization) to PIL images."""
+        def __init__(self, clip_limit=2.0, tile_grid_size=(8, 8)):
+            self.clip_limit = clip_limit
+            self.tile_grid_size = tile_grid_size
+        def __call__(self, img):
+            import cv2
+            import numpy as np
+            arr = np.array(img)
+            # Convert to LAB, apply CLAHE to L channel only
+            lab = cv2.cvtColor(arr, cv2.COLOR_RGB2LAB)
+            clahe = cv2.createCLAHE(clipLimit=self.clip_limit, tileGridSize=self.tile_grid_size)
+            lab[:, :, 0] = clahe.apply(lab[:, :, 0])
+            result = cv2.cvtColor(lab, cv2.COLOR_LAB2RGB)
+            return Image.fromarray(result)
+    
     # Transforms
     mean = [0.485, 0.456, 0.406]
     std = [0.229, 0.224, 0.225]
     train_transform = transforms.Compose([
-        transforms.RandomRotation(10),  # Before crop: corners clipped by subsequent crop
-        transforms.RandomResizedCrop(image_size, scale=(0.08, 1.0)),
+        ApplyCLAHE(),  # Enhance contrast before augmentation
+        transforms.RandomRotation(10),
+        transforms.RandomResizedCrop(image_size, scale=(0.35, 1.0)),
         transforms.RandomHorizontalFlip(),
-        transforms.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.3, hue=0.1),
+        transforms.ColorJitter(brightness=0.25, contrast=0.25, saturation=0.2, hue=0.05),
         transforms.RandomApply([transforms.GaussianBlur(kernel_size=3)], p=0.1),
         transforms.ToTensor(),
         transforms.Normalize(mean, std),
-        transforms.RandomErasing(p=0.1),
     ])
     val_transform = transforms.Compose([
+        ApplyCLAHE(),  # Same preprocessing as training
         transforms.Resize(int(image_size * 1.14)),
         transforms.CenterCrop(image_size),
         transforms.ToTensor(),
@@ -433,13 +455,32 @@ def run_convnext_training(
     except Exception as e:
         print(f"Warning: Failed to save train_batch grids: {e}")
     
-    # Model
-    model_name = f"convnext_{model_size}"
+    # Model — resolve timm name from version
+    if model_version == "v2":
+        model_name = f"convnextv2_{model_size}"
+    else:
+        model_name = f"convnext_{model_size}"
     print(f"Loading {model_name} pretrained model...")
     model = timm.create_model(model_name, pretrained=True, num_classes=len(classes)).to(device)
     
-    criterion = nn.CrossEntropyLoss()
-    optimizer = torch.optim.AdamW(model.parameters(), lr=lr0, weight_decay=weight_decay)
+    criterion = nn.CrossEntropyLoss(label_smoothing=0.1)
+    
+    # Freeze backbone for first epochs — only train classifier head initially
+    freeze_epochs = 5
+    for param in model.parameters():
+        param.requires_grad = False
+    # Unfreeze classifier head (last linear layer)
+    if hasattr(model, 'head'):
+        head = model.head
+    elif hasattr(model, 'classifier'):
+        head = model.classifier
+    else:
+        head = list(model.children())[-1]
+    for param in head.parameters():
+        param.requires_grad = True
+    print(f"Backbone frozen for first {freeze_epochs} epochs (training head only)")
+    
+    optimizer = torch.optim.AdamW(filter(lambda p: p.requires_grad, model.parameters()), lr=lr0, weight_decay=weight_decay)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs)
     
     best_acc, best_top5_acc, epochs_no_improve = 0.0, 0.0, 0
@@ -457,6 +498,15 @@ def run_convnext_training(
     
     try:
         for epoch in range(epochs):
+            # Unfreeze backbone after warmup period
+            if epoch == freeze_epochs:
+                print(f"  → Unfreezing backbone at epoch {epoch + 1}")
+                for param in model.parameters():
+                    param.requires_grad = True
+                # Recreate optimizer with all parameters
+                optimizer = torch.optim.AdamW(model.parameters(), lr=lr0 * 0.3, weight_decay=weight_decay)
+                scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs - freeze_epochs)
+            
             # Train
             model.train()
             train_loss = 0.0
@@ -513,6 +563,7 @@ def run_convnext_training(
                     "idx_to_class": idx_to_class,
                     "image_size": image_size,
                     "model_size": model_size,
+                    "model_version": model_version,
                 }, weights_dir / "best.pth")
                 print(f"  → Saved best model (acc={top1_acc:.4f})")
             else:
@@ -533,6 +584,7 @@ def run_convnext_training(
         "idx_to_class": idx_to_class,
         "image_size": image_size,
         "model_size": model_size,
+        "model_version": model_version,
     }, weights_dir / "last.pth")
     
     # ─── Artifact: confusion_matrix.json (post-training evaluation) ───
@@ -596,7 +648,7 @@ def train_classification(
     """
     backbone = config.get("classifier_backbone", "yolo")
     
-    if backbone == "convnext":
+    if backbone in ("convnext", "convnextv2"):
         metrics, weights_dir = run_convnext_training(dataset_dir, classes, config)
     else:
         metrics, weights_dir = run_yolo_classification_training(dataset_dir, config)
@@ -621,7 +673,7 @@ def collect_classification_artifacts(
     run_dir = dataset_dir / "run"
     weights_dir = run_dir / "weights"
     
-    if backbone == "convnext":
+    if backbone in ("convnext", "convnextv2"):
         artifact_specs = [
             (weights_dir / "best.pth", "best.pth"),
             (weights_dir / "last.pth", "last.pth"),

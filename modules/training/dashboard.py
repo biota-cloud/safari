@@ -385,7 +385,7 @@ def classification_config_panel() -> rx.Component:
             rx.vstack(
                 rx.text("Backbone", size="1", style={"color": styles.TEXT_SECONDARY}),
                 rx.select(
-                    ["yolo", "convnext"],
+                    ["yolo", "convnext", "convnextv2"],
                     value=TrainingState.classifier_backbone,
                     on_change=TrainingState.set_classifier_backbone,
                     size="1",
@@ -394,7 +394,7 @@ def classification_config_panel() -> rx.Component:
                 align="start",
             ),
             rx.cond(
-                TrainingState.classifier_backbone == "convnext",
+                TrainingState.classifier_backbone.contains("convnext"),
                 rx.vstack(
                     rx.text("ConvNeXt Size", size="1", style={"color": styles.TEXT_SECONDARY}),
                     rx.select(
@@ -422,7 +422,7 @@ def classification_config_panel() -> rx.Component:
             rx.vstack(
                 rx.text("Image Size", size="1", style={"color": styles.TEXT_SECONDARY}),
                 rx.select(
-                    ["224", "256", "384", "512"],
+                    ["224", "256", "384", "448", "512"],
                     value=TrainingState.classify_image_size.to_string(),
                     on_change=TrainingState.set_classify_image_size,
                     size="1",
@@ -776,7 +776,7 @@ def configuration_card() -> rx.Component:
                             # All steppers stacked vertically (SAM3 pattern)
                             # Learning Rate - conditional based on backbone
                             rx.cond(
-                                (TrainingState.training_mode == "classification") & (TrainingState.classifier_backbone == "convnext"),
+                                (TrainingState.training_mode == "classification") & (TrainingState.classifier_backbone.contains("convnext")),
                                 # ConvNeXt: LR + Weight Decay
                                 rx.vstack(
                                     numeric_stepper(
@@ -846,7 +846,7 @@ def configuration_card() -> rx.Component:
                             rx.vstack(
                                 rx.text("Optimizer", size="1", style={"color": styles.TEXT_SECONDARY}),
                                 rx.cond(
-                                    (TrainingState.training_mode == "classification") & (TrainingState.classifier_backbone == "convnext"),
+                                    (TrainingState.training_mode == "classification") & (TrainingState.classifier_backbone.contains("convnext")),
                                     rx.text("AdamW", size="2", weight="medium", style={"color": styles.TEXT_PRIMARY, "opacity": "0.6", "padding": "4px 0"}),
                                     rx.select(
                                         ["auto", "SGD", "Adam", "AdamW"],
@@ -1128,32 +1128,48 @@ def training_run_row(run: TrainingRunModel) -> rx.Component:
                 )),
                 # Classification: show backbone in badge
                 ("classification", rx.cond(
-                    run.config.get("classifier_backbone", "yolo") == "convnext",
-                    # ConvNeXt classifier
+                    run.config.get("classifier_backbone", "yolo") == "convnextv2",
+                    # ConvNeXt V2 classifier
                     rx.badge(
                         rx.hstack(
                             rx.icon("tags", size=10),
                             rx.text("Cls", size="1"),
-                            rx.text("CNX", size="1", weight="bold"),
+                            rx.text("CN2", size="1", weight="bold"),
                             spacing="1",
                             align="center",
                         ),
-                        color_scheme="gray",
+                        color_scheme="teal",
                         size="1",
                         variant="outline",
                     ),
-                    # YOLO classifier
-                    rx.badge(
-                        rx.hstack(
-                            rx.icon("tags", size=10),
-                            rx.text("Cls", size="1"),
-                            rx.text("YOL", size="1", weight="bold"),
-                            spacing="1",
-                            align="center",
+                    rx.cond(
+                        run.config.get("classifier_backbone", "yolo") == "convnext",
+                        # ConvNeXt V1 classifier
+                        rx.badge(
+                            rx.hstack(
+                                rx.icon("tags", size=10),
+                                rx.text("Cls", size="1"),
+                                rx.text("CNX", size="1", weight="bold"),
+                                spacing="1",
+                                align="center",
+                            ),
+                            color_scheme="gray",
+                            size="1",
+                            variant="outline",
                         ),
-                        color_scheme="purple",
-                        size="1",
-                        variant="outline",
+                        # YOLO classifier
+                        rx.badge(
+                            rx.hstack(
+                                rx.icon("tags", size=10),
+                                rx.text("Cls", size="1"),
+                                rx.text("YOL", size="1", weight="bold"),
+                                spacing="1",
+                                align="center",
+                            ),
+                            color_scheme="purple",
+                            size="1",
+                            variant="outline",
+                        ),
                     ),
                 )),
                 # Detection (default)
@@ -1405,6 +1421,7 @@ def training_history_card() -> rx.Component:
                 rx.select.content(
                     rx.select.item("All Backbones", value="all"),
                     rx.select.item("🧠 ConvNeXt", value="convnext"),
+                    rx.select.item("🧠 ConvNeXt V2", value="convnextv2"),
                     rx.select.item("⚡ YOLO", value="yolo"),
                 ),
                 value=TrainingState.filter_backbone,
@@ -2148,7 +2165,7 @@ def unified_run_config_card() -> rx.Component:
                                 rx.vstack(
                                     rx.text("Backbone", size="1", style={"color": styles.TEXT_SECONDARY}),
                                     rx.select(
-                                        ["yolo", "convnext"],
+                                        ["yolo", "convnext", "convnextv2"],
                                         value=TrainingState.classifier_backbone,
                                         on_change=TrainingState.set_classifier_backbone,
                                         size="1",
@@ -2157,7 +2174,7 @@ def unified_run_config_card() -> rx.Component:
                                     width="100%",
                                 ),
                                 rx.cond(
-                                    TrainingState.classifier_backbone == "convnext",
+                                    TrainingState.classifier_backbone.contains("convnext"),
                                     rx.vstack(
                                         rx.text("Size", size="1", style={"color": styles.TEXT_SECONDARY}),
                                         rx.select(
@@ -2184,7 +2201,7 @@ def unified_run_config_card() -> rx.Component:
                                 rx.vstack(
                                     rx.text("Image", size="1", style={"color": styles.TEXT_SECONDARY}),
                                     rx.select(
-                                        ["224", "256", "384", "512"],
+                                        ["224", "256", "384", "448", "512"],
                                         value=TrainingState.classify_image_size.to_string(),
                                         on_change=TrainingState.set_classify_image_size,
                                         size="1",
@@ -2227,7 +2244,7 @@ def unified_run_config_card() -> rx.Component:
                                 # All steppers stacked vertically (SAM3 pattern)
                                 # Learning Rate - conditional based on backbone
                                 rx.cond(
-                                    (TrainingState.training_mode == "classification") & (TrainingState.classifier_backbone == "convnext"),
+                                    (TrainingState.training_mode == "classification") & (TrainingState.classifier_backbone.contains("convnext")),
                                     # ConvNeXt: LR + Weight Decay
                                     rx.vstack(
                                         numeric_stepper(

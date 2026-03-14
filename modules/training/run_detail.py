@@ -269,7 +269,11 @@ def run_header() -> rx.Component:
                         TrainingState.selected_run.model_type == "classification",
                         rx.cond(
                             TrainingState.selected_run_is_convnext,
-                            rx.badge("ConvNeXt", color_scheme="gray", size="2", variant="outline"),
+                            rx.cond(
+                                TrainingState.selected_run_is_convnextv2,
+                                rx.badge("ConvNeXt V2", color_scheme="teal", size="2", variant="outline"),
+                                rx.badge("ConvNeXt", color_scheme="gray", size="2", variant="outline"),
+                            ),
                             rx.badge("YOLO", color_scheme="green", size="2", variant="outline"),
                         ),
                         rx.fragment(),

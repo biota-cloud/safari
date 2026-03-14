@@ -415,7 +415,7 @@ class EvaluationState(rx.State):
                         prefix = run_result.data.get("artifacts_r2_prefix", "")
                         if prefix:
                             run_config = run_result.data.get("config", {}) or {}
-                            ext = ".pth" if run_config.get("classifier_backbone") == "convnext" else ".pt"
+                            ext = ".pth" if run_config.get("classifier_backbone") in ("convnext", "convnextv2") else ".pt"
                             self.eval_classifier_r2_path = f"{prefix}/best{ext}"
                         print(f"[Evaluation] Hybrid mode: classifier={self.eval_classifier_classes}")
         except Exception as e:
@@ -493,7 +493,7 @@ class EvaluationState(rx.State):
         self.eval_error = ""
 
     async def start_evaluation(self):
-        """Run evaluation: inference on dataset images → compare to GT → store results."""
+        """Run evaluation: create DB run → spawn Modal job → poll for completion."""
         if not self.selected_model_id or not self.selected_dataset_id:
             self.eval_error = "Please select a model and a dataset."
             return
@@ -526,7 +526,6 @@ class EvaluationState(rx.State):
             model_name = tr.get("alias") or model["name"]
 
             # Use PROJECT classes for resolving GT class_ids (NOT training run classes)
-            # GT annotations use class_id indexed by project class order
             project_result = (
                 supabase.table("projects")
                 .select("classes")
@@ -549,8 +548,7 @@ class EvaluationState(rx.State):
                 return
             dataset = dataset_result.data
 
-            self.eval_status = "Loading ground truth images..."
-            yield
+            # Count labeled images for progress display
             images = get_dataset_images(self.selected_dataset_id)
             labeled_images = [img for img in images if img.get("annotations")]
 
@@ -561,6 +559,7 @@ class EvaluationState(rx.State):
             self.eval_progress_total = len(labeled_images)
             self.eval_progress_current = 0
 
+            # Create the evaluation run in DB
             run = create_evaluation_run(
                 project_id=self.selected_project_id,
                 user_id=auth.user_id,
@@ -578,134 +577,76 @@ class EvaluationState(rx.State):
                 return
 
             run_id = run["id"]
-            update_evaluation_run(run_id, status="running", started_at=datetime.now(timezone.utc).isoformat())
 
-            # ── Batch inference (single Modal call) ────────────────────
-            self.eval_status = "Generating image URLs..."
+            # ── Spawn Modal evaluation job (non-blocking) ──────────────
+            self.eval_status = f"Evaluation dispatched ({len(labeled_images)} images)..."
             yield
 
-            r2_client = R2Client()
-            image_urls = [
-                r2_client.generate_presigned_url(img["r2_path"])
-                for img in labeled_images
-            ]
-
-            self.eval_status = f"Running batch inference on {len(image_urls)} images..."
-            yield
-
-            if self.eval_is_hybrid:
-                # Hybrid dispatch: SAM3 + classifier (same path as playground)
-                from backend.job_router import dispatch_hybrid_inference_batch
-
-                sam3_prompts = [p.strip() for p in self.eval_sam3_prompts_input.split(",") if p.strip()]
-                prompt_class_map = {p: self.eval_classifier_classes for p in sam3_prompts}
-
-                batch_results = dispatch_hybrid_inference_batch(
-                    project_id=self.selected_project_id,
-                    image_urls=image_urls,
-                    sam3_prompts=sam3_prompts,
-                    classifier_r2_path=self.eval_classifier_r2_path,
-                    classifier_classes=self.eval_classifier_classes,
-                    prompt_class_map=prompt_class_map,
-                    confidence_threshold=self.eval_sam3_confidence,
-                    classifier_confidence=self.eval_classifier_confidence,
-                    sam3_imgsz=int(self.eval_sam3_imgsz),
-                )
-            else:
-                # YOLO detection dispatch
-                from backend.inference_router import dispatch_inference, InferenceConfig
-                config = InferenceConfig(
-                    model_type="yolo-detect",
-                    input_type="batch",
-                    model_name_or_id=model["id"],
-                )
-                batch_results = dispatch_inference(
-                    config,
-                    image_urls=image_urls,
-                    confidence=self.eval_classifier_confidence,
-                )
-
-            # ── Match predictions to GT per image ─────────────────────
-            self.eval_status = "Matching predictions to ground truth..."
-            yield
-
-            all_image_results = []
-            prediction_records = []
-            db_batch_size = 50
-
-            for idx, image in enumerate(labeled_images):
-                try:
-                    gt_annotations = image.get("annotations", [])
-                    if isinstance(gt_annotations, str):
-                        import json
-                        gt_annotations = json.loads(gt_annotations)
-
-                    # Get predictions for this image from batch results
-                    img_result = batch_results[idx] if idx < len(batch_results) else {}
-                    predictions = img_result.get("predictions", [])
-
-                    for pred in predictions:
-                        pred["confidence"] = int(pred.get("confidence", 0) * 100)
-
-                    result = match_predictions_to_gt(
-                        gt_annotations=gt_annotations,
-                        predictions=predictions,
-                        iou_threshold=self.eval_iou,
-                        classes=classes,
-                    )
-                    all_image_results.append(result)
-
-                    prediction_records.append({
-                        "evaluation_run_id": run_id,
-                        "image_id": image["id"],
-                        "image_filename": image["filename"],
-                        "image_r2_path": image.get("r2_path", ""),
-                        "ground_truth": gt_annotations,
-                        "predictions": predictions,
-                        "matches": result["matches"],
-                        "tp_count": result["tp"],
-                        "fp_count": result["fp"],
-                        "fn_count": result["fn"],
-                    })
-
-                    if len(prediction_records) >= db_batch_size:
-                        create_evaluation_predictions_batch(prediction_records)
-                        prediction_records = []
-
-                except Exception as img_error:
-                    print(f"[Evaluation] Error matching image {image['filename']}: {img_error}")
-                    all_image_results.append({"tp": 0, "fp": 0, "fn": 0, "matches": [], "tp_details": [], "fp_details": [], "fn_details": []})
-
-                self.eval_progress_current = idx + 1
-
-                if (idx + 1) % 50 == 0:
-                    update_evaluation_run(run_id, processed_images=idx + 1)
-                    yield
-
-            update_evaluation_run(run_id, processed_images=len(labeled_images))
-
-            if prediction_records:
-                create_evaluation_predictions_batch(prediction_records)
-
-            self.eval_status = "Computing metrics..."
-            yield
-
-            metrics = aggregate_metrics(all_image_results, classes)
-
-            update_evaluation_run(
-                run_id,
-                status="completed",
-                overall_metrics=metrics["overall"],
-                per_class_metrics=metrics["per_class"],
-                confusion_matrix=metrics["confusion_matrix"],
-                completed_at=datetime.now(timezone.utc).isoformat(),
+            import modal
+            eval_fn = modal.Function.from_name("safari-evaluation", "run_evaluation")
+            eval_fn.spawn(
+                run_id=run_id,
+                project_id=self.selected_project_id,
+                model_id=self.selected_model_id,
+                dataset_id=self.selected_dataset_id,
+                classes=classes,
+                confidence_threshold=self.eval_confidence,
+                iou_threshold=self.eval_iou,
+                is_hybrid=self.eval_is_hybrid,
+                sam3_prompts=[p.strip() for p in self.eval_sam3_prompts_input.split(",") if p.strip()] if self.eval_is_hybrid else None,
+                classifier_r2_path=self.eval_classifier_r2_path if self.eval_is_hybrid else "",
+                classifier_classes=self.eval_classifier_classes if self.eval_is_hybrid else None,
+                classifier_confidence=self.eval_classifier_confidence,
+                sam3_confidence=self.eval_sam3_confidence,
+                sam3_imgsz=int(self.eval_sam3_imgsz),
             )
+            print(f"[Evaluation] Modal job spawned for run {run_id}")
 
-            raw_runs = get_evaluation_runs(self.selected_project_id)
-            self.evaluation_runs = [_run_to_row(r) for r in raw_runs]
-            self.eval_status = "Evaluation complete!"
+            # ── Poll for completion ────────────────────────────────────
+            import asyncio
+            poll_run_id = run_id
+            max_polls = 360  # 30 min at 5s intervals
 
-            await self.view_run(run_id)
+            for i in range(max_polls):
+                await asyncio.sleep(5)
+
+                try:
+                    run_check = (
+                        supabase.table("evaluation_runs")
+                        .select("status, processed_images, error_message")
+                        .eq("id", poll_run_id)
+                        .single()
+                        .execute()
+                    )
+                    if not run_check.data:
+                        break
+
+                    status = run_check.data.get("status", "running")
+                    processed = run_check.data.get("processed_images", 0)
+
+                    self.eval_progress_current = processed
+
+                    if status == "completed":
+                        self.eval_status = "Evaluation complete!"
+                        raw_runs = get_evaluation_runs(self.selected_project_id)
+                        self.evaluation_runs = [_run_to_row(r) for r in raw_runs]
+                        await self.view_run(poll_run_id)
+                        break
+                    elif status == "failed":
+                        error_msg = run_check.data.get("error_message", "Unknown error")
+                        self.eval_error = f"Evaluation failed: {error_msg}"
+                        raw_runs = get_evaluation_runs(self.selected_project_id)
+                        self.evaluation_runs = [_run_to_row(r) for r in raw_runs]
+                        break
+                    else:
+                        self.eval_status = f"Running inference... ({processed}/{self.eval_progress_total})"
+                        yield
+
+                except Exception as poll_error:
+                    print(f"[Evaluation] Poll error: {poll_error}")
+                    continue
+            else:
+                self.eval_error = "Evaluation timed out after 30 minutes."
 
         except Exception as e:
             self.eval_error = f"Evaluation failed: {str(e)}"

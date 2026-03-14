@@ -121,7 +121,7 @@ class TrainingState(rx.State):
     # Classification-specific configuration
     classify_image_size: int = 224  # 224/256/384/512
     classify_batch_size: int = 32   # Classification can use larger batches
-    classifier_backbone: str = "yolo"  # "yolo" or "convnext"
+    classifier_backbone: str = "yolo"  # "yolo", "convnext", or "convnextv2"
     convnext_model_size: str = "tiny"  # tiny/small/base/large
     convnext_lr0: float = 0.0001  # ConvNeXt learning rate (1e-4 for fine-tuning)
     convnext_weight_decay: float = 0.05  # ConvNeXt weight decay (AdamW regularization)
@@ -821,7 +821,7 @@ class TrainingState(rx.State):
     @rx.var
     def effective_lr_display(self) -> float:
         """Show the effective learning rate based on backbone selection."""
-        if self.training_mode == "classification" and self.classifier_backbone == "convnext":
+        if self.training_mode == "classification" and self.classifier_backbone in ("convnext", "convnextv2"):
             return self.convnext_lr0
         return self.lr0
     
@@ -1028,8 +1028,13 @@ class TrainingState(rx.State):
     
     @rx.var
     def selected_run_is_convnext(self) -> bool:
-        """Check if the selected run used ConvNeXt backbone."""
-        return self.selected_run_backbone == "convnext"
+        """Check if the selected run used ConvNeXt backbone (V1 or V2)."""
+        return self.selected_run_backbone in ("convnext", "convnextv2")
+    
+    @rx.var
+    def selected_run_is_convnextv2(self) -> bool:
+        """Check if the selected run used ConvNeXt V2 backbone."""
+        return self.selected_run_backbone == "convnextv2"
     
     @rx.var
     def selected_run_is_sam3(self) -> bool:
@@ -1920,7 +1925,7 @@ class TrainingState(rx.State):
         if run.status == "completed" and run.artifacts_r2_prefix:
             await self._fetch_results_csv(run.artifacts_r2_prefix)
             # Fetch confusion matrix for ConvNeXt runs
-            if run.config.get("classifier_backbone") == "convnext":
+            if run.config.get("classifier_backbone") in ("convnext", "convnextv2"):
                 await self._fetch_confusion_matrix(run.artifacts_r2_prefix)
     
     async def _fetch_results_csv(self, prefix: str):
@@ -2260,7 +2265,7 @@ class TrainingState(rx.State):
             optimizer = self.optimizer
             # Use backbone-specific learning rate
             classifier_backbone = self.classifier_backbone
-            if classifier_backbone == "convnext":
+            if classifier_backbone in ("convnext", "convnextv2"):
                 lr0 = self.convnext_lr0  # ConvNeXt uses smaller LR
             else:
                 lr0 = self.lr0  # YOLO LR
@@ -2835,7 +2840,7 @@ class TrainingState(rx.State):
             return
         
         # Determine weights path - ConvNeXt uses .pth, YOLO uses .pt
-        is_convnext = run.config.get("classifier_backbone") == "convnext"
+        is_convnext = run.config.get("classifier_backbone") in ("convnext", "convnextv2")
         ext = ".pth" if is_convnext else ".pt"
         weights_file = f"best{ext}" if model_type == "best" else f"last{ext}"
         weights_path = f"{run.artifacts_r2_prefix}/{weights_file}"
@@ -2930,7 +2935,7 @@ class TrainingState(rx.State):
         
         try:
             # Determine weights path - ConvNeXt uses .pth, YOLO uses .pt
-            is_convnext = run.config.get("classifier_backbone") == "convnext"
+            is_convnext = run.config.get("classifier_backbone") in ("convnext", "convnextv2")
             ext = ".pth" if is_convnext else ".pt"
             weights_file = f"best{ext}" if model_type == "best" else f"last{ext}"
             weights_path = f"{run.artifacts_r2_prefix}/{weights_file}"

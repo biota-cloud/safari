@@ -30,16 +30,26 @@ def load_convnext_classifier(local_path: Path) -> tuple:
     
     # Get model config from checkpoint
     model_size = ckpt.get("model_size", "tiny")
+    model_version = ckpt.get("model_version", "v1")  # v1 default for backward compat
     num_classes = len(ckpt["classes"])
     
-    print(f"  Loading ConvNeXt-{model_size} with {num_classes} classes...")
-    model = timm.create_model(f"convnext_{model_size}", pretrained=False, num_classes=num_classes)
+    # Resolve timm model name
+    if model_version == "v2":
+        timm_name = f"convnextv2_{model_size}"
+        version_label = "V2-"
+    else:
+        timm_name = f"convnext_{model_size}"
+        version_label = ""
+    
+    print(f"  Loading ConvNeXt{version_label}{model_size} with {num_classes} classes...")
+    model = timm.create_model(timm_name, pretrained=False, num_classes=num_classes)
     model.load_state_dict(ckpt["model_state_dict"])
     model = model.to(device).eval()
     
-    # Create transform matching training
+    # Create transform matching training (including CLAHE)
     img_size = ckpt.get("image_size", 224)
     transform = transforms.Compose([
+        transforms.Lambda(_apply_clahe),  # Match training CLAHE preprocessing
         transforms.Resize(int(img_size * 1.14)),
         transforms.CenterCrop(img_size),
         transforms.ToTensor(),
@@ -47,6 +57,19 @@ def load_convnext_classifier(local_path: Path) -> tuple:
     ])
     
     return model, ckpt["idx_to_class"], transform, device
+
+
+def _apply_clahe(img):
+    """Apply CLAHE to PIL image — must match training preprocessing."""
+    import cv2
+    import numpy as np
+    arr = np.array(img)
+    lab = cv2.cvtColor(arr, cv2.COLOR_RGB2LAB)
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+    lab[:, :, 0] = clahe.apply(lab[:, :, 0])
+    result = cv2.cvtColor(lab, cv2.COLOR_LAB2RGB)
+    from PIL import Image
+    return Image.fromarray(result)
 
 
 def load_classifier(r2_path: str, local_path: Path) -> dict:
